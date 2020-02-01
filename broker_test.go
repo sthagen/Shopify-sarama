@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -108,7 +109,6 @@ func TestSimpleBrokerCommunication(t *testing.T) {
 			t.Error(err)
 		}
 	}
-
 }
 
 var ErrTokenFailure = errors.New("Failure generating token")
@@ -130,9 +130,9 @@ func newTokenProvider(token *AccessToken, err error) *TokenProvider {
 }
 
 func TestSASLOAuthBearer(t *testing.T) {
-
 	testTable := []struct {
 		name                      string
+		authidentity              string
 		mockSASLHandshakeResponse MockResponse // Mock SaslHandshakeRequest response from broker
 		mockSASLAuthResponse      MockResponse // Mock SaslAuthenticateRequest response from broker
 		expectClientErr           bool         // Expect an internal client-side error
@@ -200,7 +200,6 @@ func TestSASLOAuthBearer(t *testing.T) {
 	}
 
 	for i, test := range testTable {
-
 		// mockBroker mocks underlying network logic and broker responses
 		mockBroker := NewMockBroker(t, 0)
 
@@ -325,7 +324,6 @@ func TestSASLSCRAMSHAXXX(t *testing.T) {
 	}
 
 	for i, test := range testTable {
-
 		// mockBroker mocks underlying network logic and broker responses
 		mockBroker := NewMockBroker(t, 0)
 		broker := NewBroker(mockBroker.Addr())
@@ -393,15 +391,21 @@ func TestSASLSCRAMSHAXXX(t *testing.T) {
 }
 
 func TestSASLPlainAuth(t *testing.T) {
-
 	testTable := []struct {
 		name             string
+		authidentity     string
 		mockAuthErr      KError // Mock and expect error returned from SaslAuthenticateRequest
 		mockHandshakeErr KError // Mock and expect error returned from SaslHandshakeRequest
 		expectClientErr  bool   // Expect an internal client-side error
 	}{
 		{
 			name:             "SASL Plain OK server response",
+			mockAuthErr:      ErrNoError,
+			mockHandshakeErr: ErrNoError,
+		},
+		{
+			name:             "SASL Plain OK server response with authidentity",
+			authidentity:     "authid",
 			mockAuthErr:      ErrNoError,
 			mockHandshakeErr: ErrNoError,
 		},
@@ -418,7 +422,6 @@ func TestSASLPlainAuth(t *testing.T) {
 	}
 
 	for i, test := range testTable {
-
 		// mockBroker mocks underlying network logic and broker responses
 		mockBroker := NewMockBroker(t, 0)
 
@@ -453,6 +456,7 @@ func TestSASLPlainAuth(t *testing.T) {
 
 		conf := NewConfig()
 		conf.Net.SASL.Mechanism = SASLTypePlaintext
+		conf.Net.SASL.AuthIdentity = test.authidentity
 		conf.Net.SASL.User = "token"
 		conf.Net.SASL.Password = "password"
 		conf.Net.SASL.Version = SASLHandshakeV1
@@ -474,6 +478,23 @@ func TestSASLPlainAuth(t *testing.T) {
 		broker.conn = conn
 
 		err = broker.authenticateViaSASL()
+		if err == nil {
+			for _, rr := range mockBroker.History() {
+				switch r := rr.Request.(type) {
+				case *SaslAuthenticateRequest:
+					x := bytes.SplitN(r.SaslAuthBytes, []byte("\x00"), 3)
+					if string(x[0]) != conf.Net.SASL.AuthIdentity {
+						t.Errorf("[%d]:[%s] expected %s auth identity, got %s\n", i, test.name, conf.Net.SASL.AuthIdentity, x[0])
+					}
+					if string(x[1]) != conf.Net.SASL.User {
+						t.Errorf("[%d]:[%s] expected %s user, got %s\n", i, test.name, conf.Net.SASL.User, x[1])
+					}
+					if string(x[2]) != conf.Net.SASL.Password {
+						t.Errorf("[%d]:[%s] expected %s password, got %s\n", i, test.name, conf.Net.SASL.Password, x[2])
+					}
+				}
+			}
+		}
 
 		if test.mockAuthErr != ErrNoError {
 			if test.mockAuthErr != err {
@@ -543,7 +564,6 @@ func TestSASLReadTimeout(t *testing.T) {
 }
 
 func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
-
 	testTable := []struct {
 		name               string
 		error              error
@@ -659,11 +679,9 @@ func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
 
 		mockBroker.Close()
 	}
-
 }
 
 func TestBuildClientFirstMessage(t *testing.T) {
-
 	testTable := []struct {
 		name        string
 		token       *AccessToken
@@ -700,7 +718,6 @@ func TestBuildClientFirstMessage(t *testing.T) {
 	}
 
 	for i, test := range testTable {
-
 		actual, err := buildClientFirstMessage(test.token)
 
 		if !reflect.DeepEqual(test.expected, actual) {
