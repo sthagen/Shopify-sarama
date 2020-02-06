@@ -38,6 +38,9 @@ type ConsumerGroup interface {
 	// as quickly as possible to allow time for Cleanup() and the final offset commit. If the timeout
 	// is exceeded, the consumer will be removed from the group by Kafka, which will cause offset
 	// commit failures.
+	// This method should be called inside an infinite loop, when a
+	// server-side rebalance happens, the consumer session will need to be
+	// recreated to get the new claims.
 	Consume(ctx context.Context, topics []string, handler ConsumerGroupHandler) error
 
 	// Errors returns a read channel of errors that occurred during the consumer life-cycle.
@@ -331,20 +334,14 @@ func (c *consumerGroup) syncGroupRequest(coordinator *Broker, plan BalanceStrate
 		MemberId:     c.memberID,
 		GenerationId: generationID,
 	}
+	strategy := c.config.Consumer.Group.Rebalance.Strategy
 	for memberID, topics := range plan {
 		assignment := &ConsumerGroupMemberAssignment{Topics: topics}
-
-		// Include topic assignments in group-assignment userdata for each consumer-group member
-		if c.config.Consumer.Group.Rebalance.Strategy.Name() == StickyBalanceStrategyName {
-			userDataBytes, err := encode(&StickyAssignorUserDataV1{
-				Topics:     topics,
-				Generation: generationID,
-			}, nil)
-			if err != nil {
-				return nil, err
-			}
-			assignment.UserData = userDataBytes
+		userDataBytes, err := strategy.AssignmentData(memberID, topics, generationID)
+		if err != nil {
+			return nil, err
 		}
+		assignment.UserData = userDataBytes
 		if err := req.AddGroupAssignmentMember(memberID, assignment); err != nil {
 			return nil, err
 		}
