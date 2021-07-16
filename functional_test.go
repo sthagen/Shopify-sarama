@@ -111,20 +111,18 @@ func prepareDockerTestEnvironment(ctx context.Context, env *testEnvironment) err
 	if version, ok := os.LookupEnv("KAFKA_VERSION"); ok {
 		env.KafkaVersion = version
 	} else {
-		// We have cp-6.0.1 as the default in the docker-compose file, so that's kafka 2.6.0.
-		env.KafkaVersion = "2.6.1"
+		// We have cp-6.1.1 as the default in the docker-compose file, so that's kafka 2.7.1.
+		env.KafkaVersion = "2.7.1"
 	}
 
 	// the mapping of confluent platform docker image versions -> kafka versions can be
 	// found here: https://docs.confluent.io/current/installation/versions-interoperability.html
 	var confluentPlatformVersion string
 	switch env.KafkaVersion {
-	case "2.7.0":
-		confluentPlatformVersion = "6.0.1"
-	case "2.6.1":
-		confluentPlatformVersion = "6.0.1"
-	case "2.5.1":
-		confluentPlatformVersion = "5.5.0"
+	case "2.8.0":
+		confluentPlatformVersion = "6.1.1"
+	case "2.7.1":
+		confluentPlatformVersion = "6.1.1"
 	default:
 		return fmt.Errorf("don't know what confluent platform version to use for kafka %s", env.KafkaVersion)
 	}
@@ -357,7 +355,7 @@ func prepareTestTopics(ctx context.Context, env *testEnvironment) error {
 			return fmt.Errorf("failed fetching the uncommitted msg jar: %w", err)
 		}
 		defer res.Body.Close()
-		jarFile, err := os.OpenFile(jarName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+		jarFile, err := os.OpenFile(jarName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o644)
 		if err != nil {
 			return fmt.Errorf("failed opening the uncomitted msg jar: %w", err)
 		}

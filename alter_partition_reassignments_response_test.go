@@ -19,16 +19,14 @@ var (
 		6, 116, 111, 112, 105, 99, // topic name "topic"
 		2,          // partition array length 1
 		0, 0, 0, 1, // partitionId
-		0, 3, //kerror
+		0, 3, // kerror
 		7, 101, 114, 114, 111, 114, 50, // error string "error2"
 		0, 0, 0, // empty tagged fields
 	}
 )
 
 func TestAlterPartitionReassignmentResponse(t *testing.T) {
-	var response *AlterPartitionReassignmentsResponse
-
-	response = &AlterPartitionReassignmentsResponse{
+	var response *AlterPartitionReassignmentsResponse = &AlterPartitionReassignmentsResponse{
 		ThrottleTimeMs: int32(10000),
 		Version:        int16(0),
 	}
