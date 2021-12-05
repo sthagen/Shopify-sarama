@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	toxiproxy "github.com/Shopify/toxiproxy/client"
+	toxiproxy "github.com/Shopify/toxiproxy/v2/client"
 )
 
 const (
@@ -112,15 +112,17 @@ func prepareDockerTestEnvironment(ctx context.Context, env *testEnvironment) err
 	if version, ok := os.LookupEnv("KAFKA_VERSION"); ok {
 		env.KafkaVersion = version
 	} else {
-		// We have cp-6.1.2 as the default in the docker-compose file, so that's kafka 2.7.1.
-		env.KafkaVersion = "2.7.1"
+		// We have cp-7.0.0 as the default in the docker-compose file, so that's kafka 3.0.0.
+		env.KafkaVersion = "3.0.0"
 	}
 
 	// the mapping of confluent platform docker image versions -> kafka versions can be
 	// found here: https://docs.confluent.io/current/installation/versions-interoperability.html
 	var confluentPlatformVersion string
 	switch env.KafkaVersion {
-	case "2.8.0":
+	case "3.0.0":
+		confluentPlatformVersion = "7.0.0"
+	case "2.8.1":
 		confluentPlatformVersion = "6.2.0"
 	case "2.7.1":
 		confluentPlatformVersion = "6.1.2"
