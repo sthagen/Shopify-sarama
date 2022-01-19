@@ -155,13 +155,19 @@ func (c *Consumer) ExpectConsumePartition(topic string, partition int32, offset 
 	}
 
 	if c.partitionConsumers[topic][partition] == nil {
+		highWatermarkOffset := offset
+		if offset == sarama.OffsetOldest {
+			highWatermarkOffset = 0
+		}
+
 		c.partitionConsumers[topic][partition] = &PartitionConsumer{
-			t:         c.t,
-			topic:     topic,
-			partition: partition,
-			offset:    offset,
-			messages:  make(chan *sarama.ConsumerMessage, c.config.ChannelBufferSize),
-			errors:    make(chan *sarama.ConsumerError, c.config.ChannelBufferSize),
+			highWaterMarkOffset: highWatermarkOffset,
+			t:                   c.t,
+			topic:               topic,
+			partition:           partition,
+			offset:              offset,
+			messages:            make(chan *sarama.ConsumerMessage, c.config.ChannelBufferSize),
+			errors:              make(chan *sarama.ConsumerError, c.config.ChannelBufferSize),
 		}
 	}
 
@@ -276,15 +282,17 @@ func (pc *PartitionConsumer) HighWaterMarkOffset() int64 {
 // message was consumed from the Messages channel, because there are legitimate
 // reasons forthis not to happen. ou can call ExpectMessagesDrainedOnClose so it will
 // verify that the channel is empty on close.
-func (pc *PartitionConsumer) YieldMessage(msg *sarama.ConsumerMessage) {
+func (pc *PartitionConsumer) YieldMessage(msg *sarama.ConsumerMessage) *PartitionConsumer {
 	pc.l.Lock()
 	defer pc.l.Unlock()
 
 	msg.Topic = pc.topic
 	msg.Partition = pc.partition
-	msg.Offset = atomic.AddInt64(&pc.highWaterMarkOffset, 1)
+	msg.Offset = atomic.AddInt64(&pc.highWaterMarkOffset, 1) - 1
 
 	pc.messages <- msg
+
+	return pc
 }
 
 // YieldError will yield an error on the Errors channel of this partition consumer
@@ -292,24 +300,30 @@ func (pc *PartitionConsumer) YieldMessage(msg *sarama.ConsumerMessage) {
 // consumed from the Errors channel, because there are legitimate reasons for this
 // not to happen. You can call ExpectErrorsDrainedOnClose so it will verify that
 // the channel is empty on close.
-func (pc *PartitionConsumer) YieldError(err error) {
+func (pc *PartitionConsumer) YieldError(err error) *PartitionConsumer {
 	pc.errors <- &sarama.ConsumerError{
 		Topic:     pc.topic,
 		Partition: pc.partition,
 		Err:       err,
 	}
+
+	return pc
 }
 
 // ExpectMessagesDrainedOnClose sets an expectation on the partition consumer
 // that the messages channel will be fully drained when Close is called. If this
 // expectation is not met, an error is reported to the error reporter.
-func (pc *PartitionConsumer) ExpectMessagesDrainedOnClose() {
+func (pc *PartitionConsumer) ExpectMessagesDrainedOnClose() *PartitionConsumer {
 	pc.messagesShouldBeDrained = true
+
+	return pc
 }
 
 // ExpectErrorsDrainedOnClose sets an expectation on the partition consumer
 // that the errors channel will be fully drained when Close is called. If this
 // expectation is not met, an error is reported to the error reporter.
-func (pc *PartitionConsumer) ExpectErrorsDrainedOnClose() {
+func (pc *PartitionConsumer) ExpectErrorsDrainedOnClose() *PartitionConsumer {
 	pc.errorsShouldBeDrained = true
+
+	return pc
 }
