@@ -117,7 +117,6 @@ var (
 )
 
 func TestMessageEncoding(t *testing.T) {
-	t.Parallel()
 	message := Message{}
 	testEncodable(t, "empty", &message, emptyMessage)
 
@@ -139,7 +138,6 @@ func TestMessageEncoding(t *testing.T) {
 }
 
 func TestMessageDecoding(t *testing.T) {
-	t.Parallel()
 	message := Message{}
 	testDecodable(t, "empty", &message, emptyMessage)
 	if message.Codec != CompressionNone {
@@ -168,7 +166,6 @@ func TestMessageDecoding(t *testing.T) {
 }
 
 func TestMessageDecodingBulkSnappy(t *testing.T) {
-	t.Parallel()
 	message := Message{}
 	testDecodable(t, "bulk snappy", &message, emptyBulkSnappyMessage)
 	if message.Codec != CompressionSnappy {
@@ -185,7 +182,6 @@ func TestMessageDecodingBulkSnappy(t *testing.T) {
 }
 
 func TestMessageDecodingBulkGzip(t *testing.T) {
-	t.Parallel()
 	message := Message{}
 	testDecodable(t, "bulk gzip", &message, emptyBulkGzipMessage)
 	if message.Codec != CompressionGZIP {
@@ -202,7 +198,6 @@ func TestMessageDecodingBulkGzip(t *testing.T) {
 }
 
 func TestMessageDecodingBulkLZ4(t *testing.T) {
-	t.Parallel()
 	message := Message{}
 	testDecodable(t, "bulk lz4", &message, emptyBulkLZ4Message)
 	if message.Codec != CompressionLZ4 {
@@ -219,7 +214,6 @@ func TestMessageDecodingBulkLZ4(t *testing.T) {
 }
 
 func TestMessageDecodingBulkZSTD(t *testing.T) {
-	t.Parallel()
 	message := Message{}
 	testDecodable(t, "bulk zstd", &message, emptyBulkZSTDMessage)
 	if message.Codec != CompressionZSTD {
@@ -236,13 +230,11 @@ func TestMessageDecodingBulkZSTD(t *testing.T) {
 }
 
 func TestMessageDecodingVersion1(t *testing.T) {
-	t.Parallel()
 	message := Message{Version: 1}
 	testDecodable(t, "decoding empty v1 message", &message, emptyV1Message)
 }
 
 func TestMessageDecodingUnknownVersions(t *testing.T) {
-	t.Parallel()
 	message := Message{Version: 2}
 	err := decode(emptyV2Message, &message)
 	if err == nil {
@@ -250,5 +242,34 @@ func TestMessageDecodingUnknownVersions(t *testing.T) {
 	}
 	if err.Error() != "kafka: error decoding packet: unknown magic byte (2)" {
 		t.Error("Decoding an unknown magic byte produced an unknown error ", err)
+	}
+}
+
+func TestCompressionCodecUnmarshal(t *testing.T) {
+	cases := []struct {
+		Input         string
+		Expected      CompressionCodec
+		ExpectedError bool
+	}{
+		{"none", CompressionNone, false},
+		{"zstd", CompressionZSTD, false},
+		{"gzip", CompressionGZIP, false},
+		{"unknown", CompressionNone, true},
+	}
+	for _, c := range cases {
+		var cc CompressionCodec
+		err := cc.UnmarshalText([]byte(c.Input))
+		if err != nil && !c.ExpectedError {
+			t.Errorf("UnmarshalText(%q) error:\n%+v", c.Input, err)
+			continue
+		}
+		if err == nil && c.ExpectedError {
+			t.Errorf("UnmarshalText(%q) got %v but expected error", c.Input, cc)
+			continue
+		}
+		if cc != c.Expected {
+			t.Errorf("UnmarshalText(%q) got %v but expected %v", c.Input, cc, c.Expected)
+			continue
+		}
 	}
 }

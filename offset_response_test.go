@@ -1,6 +1,9 @@
 package sarama
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 var (
 	emptyOffsetResponse = []byte{
@@ -38,7 +41,6 @@ var (
 )
 
 func TestEmptyOffsetResponse(t *testing.T) {
-	t.Parallel()
 	response := OffsetResponse{}
 
 	testVersionDecodable(t, "empty", &response, emptyOffsetResponse, 0)
@@ -55,7 +57,6 @@ func TestEmptyOffsetResponse(t *testing.T) {
 }
 
 func TestNormalOffsetResponse(t *testing.T) {
-	t.Parallel()
 	response := OffsetResponse{}
 
 	testVersionDecodable(t, "normal", &response, normalOffsetResponse, 0)
@@ -72,7 +73,7 @@ func TestNormalOffsetResponse(t *testing.T) {
 		t.Fatal("Decoding produced", len(response.Blocks["z"]), "partitions for topic 'z' where there was one.")
 	}
 
-	if response.Blocks["z"][2].Err != ErrNoError {
+	if !errors.Is(response.Blocks["z"][2].Err, ErrNoError) {
 		t.Fatal("Decoding produced invalid error for topic z partition 2.")
 	}
 
@@ -86,7 +87,6 @@ func TestNormalOffsetResponse(t *testing.T) {
 }
 
 func TestNormalOffsetResponseV1(t *testing.T) {
-	t.Parallel()
 	response := OffsetResponse{}
 
 	testVersionDecodable(t, "normal", &response, normalOffsetResponseV1, 1)
@@ -103,7 +103,7 @@ func TestNormalOffsetResponseV1(t *testing.T) {
 		t.Fatal("Decoding produced", len(response.Blocks["z"]), "partitions for topic 'z' where there was one.")
 	}
 
-	if response.Blocks["z"][2].Err != ErrNoError {
+	if !errors.Is(response.Blocks["z"][2].Err, ErrNoError) {
 		t.Fatal("Decoding produced invalid error for topic z partition 2.")
 	}
 

@@ -2,6 +2,7 @@ package sarama
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -202,7 +203,6 @@ var (
 )
 
 func TestEmptyFetchResponse(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "empty", &response, emptyFetchResponse, 0)
 
@@ -212,7 +212,6 @@ func TestEmptyFetchResponse(t *testing.T) {
 }
 
 func TestOneMessageFetchResponse(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "one message", &response, oneMessageFetchResponse, 0)
 
@@ -228,7 +227,7 @@ func TestOneMessageFetchResponse(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrOffsetOutOfRange {
+	if !errors.Is(block.Err, ErrOffsetOutOfRange) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {
@@ -269,7 +268,6 @@ func TestOneMessageFetchResponse(t *testing.T) {
 }
 
 func TestOverflowMessageFetchResponse(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "overflow message", &response, overflowMessageFetchResponse, 0)
 
@@ -285,7 +283,7 @@ func TestOverflowMessageFetchResponse(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrOffsetOutOfRange {
+	if !errors.Is(block.Err, ErrOffsetOutOfRange) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {
@@ -330,7 +328,6 @@ func TestOverflowMessageFetchResponse(t *testing.T) {
 }
 
 func TestOneRecordFetchResponse(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "one record", &response, oneRecordFetchResponse, 4)
 
@@ -346,7 +343,7 @@ func TestOneRecordFetchResponse(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrOffsetOutOfRange {
+	if !errors.Is(block.Err, ErrOffsetOutOfRange) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {
@@ -380,7 +377,6 @@ func TestOneRecordFetchResponse(t *testing.T) {
 }
 
 func TestPartailFetchResponse(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "partial record", &response, partialFetchResponse, 4)
 
@@ -396,7 +392,7 @@ func TestPartailFetchResponse(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrNoError {
+	if !errors.Is(block.Err, ErrNoError) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {
@@ -423,7 +419,6 @@ func TestPartailFetchResponse(t *testing.T) {
 }
 
 func TestEmptyRecordsFetchResponse(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "empty record", &response, emptyRecordsFetchResponsev11, 11)
 
@@ -439,7 +434,7 @@ func TestEmptyRecordsFetchResponse(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrNoError {
+	if !errors.Is(block.Err, ErrNoError) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {
@@ -469,7 +464,6 @@ func TestEmptyRecordsFetchResponse(t *testing.T) {
 }
 
 func TestOneMessageFetchResponseV4(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(t, "one message v4", &response, oneMessageFetchResponseV4, 4)
 
@@ -485,7 +479,7 @@ func TestOneMessageFetchResponseV4(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrOffsetOutOfRange {
+	if !errors.Is(block.Err, ErrOffsetOutOfRange) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {
@@ -526,7 +520,6 @@ func TestOneMessageFetchResponseV4(t *testing.T) {
 }
 
 func TestPreferredReplicaFetchResponseV11(t *testing.T) {
-	t.Parallel()
 	response := FetchResponse{}
 	testVersionDecodable(
 		t, "preferred replica fetch response v11", &response,
@@ -552,7 +545,7 @@ func TestPreferredReplicaFetchResponseV11(t *testing.T) {
 	if block == nil {
 		t.Fatal("GetBlock didn't return block.")
 	}
-	if block.Err != ErrOffsetOutOfRange {
+	if !errors.Is(block.Err, ErrOffsetOutOfRange) {
 		t.Error("Decoding didn't produce correct error code.")
 	}
 	if block.HighWaterMarkOffset != 0x10101010 {

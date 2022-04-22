@@ -1,6 +1,9 @@
 package sarama
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 var (
 	consumerMetadataResponseError = []byte{
@@ -19,7 +22,6 @@ var (
 )
 
 func TestConsumerMetadataResponseError(t *testing.T) {
-	t.Parallel()
 	response := &ConsumerMetadataResponse{Err: ErrOffsetsLoadInProgress}
 	testEncodable(t, "", response, consumerMetadataResponseError)
 
@@ -28,13 +30,12 @@ func TestConsumerMetadataResponseError(t *testing.T) {
 		t.Error("could not decode: ", err)
 	}
 
-	if decodedResp.Err != ErrOffsetsLoadInProgress {
+	if !errors.Is(decodedResp.Err, ErrOffsetsLoadInProgress) {
 		t.Errorf("got %s, want %s", decodedResp.Err, ErrOffsetsLoadInProgress)
 	}
 }
 
 func TestConsumerMetadataResponseSuccess(t *testing.T) {
-	t.Parallel()
 	broker := NewBroker("foo:52445")
 	broker.id = 0xAB
 	response := ConsumerMetadataResponse{

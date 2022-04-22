@@ -3,7 +3,6 @@ package sarama
 import "testing"
 
 func TestVersionCompare(t *testing.T) {
-	t.Parallel()
 	if V0_8_2_0.IsAtLeast(V0_8_2_1) {
 		t.Error("0.8.2.0 >= 0.8.2.1")
 	}
@@ -28,7 +27,6 @@ func TestVersionCompare(t *testing.T) {
 }
 
 func TestVersionParsing(t *testing.T) {
-	t.Parallel()
 	validVersions := []string{
 		"0.8.2.0",
 		"0.8.2.1",
@@ -73,6 +71,7 @@ func TestVersionParsing(t *testing.T) {
 		"2.8.0",
 		"2.8.1",
 		"3.0.0",
+		"3.0.1",
 		"3.1.0",
 	}
 	for _, s := range validVersions {

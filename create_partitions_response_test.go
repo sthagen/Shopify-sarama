@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -25,7 +26,6 @@ var (
 )
 
 func TestCreatePartitionsResponse(t *testing.T) {
-	t.Parallel()
 	resp := &CreatePartitionsResponse{
 		ThrottleTime: 100 * time.Millisecond,
 		TopicPartitionErrors: map[string]*TopicPartitionError{
@@ -53,10 +53,13 @@ func TestCreatePartitionsResponse(t *testing.T) {
 }
 
 func TestTopicPartitionError(t *testing.T) {
-	t.Parallel()
 	// Assert that TopicPartitionError satisfies error interface
 	var err error = &TopicPartitionError{
 		Err: ErrTopicAuthorizationFailed,
+	}
+
+	if !errors.Is(err, ErrTopicAuthorizationFailed) {
+		t.Errorf("unexpected errors.Is")
 	}
 
 	got := err.Error()

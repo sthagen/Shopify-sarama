@@ -7,7 +7,6 @@ import (
 )
 
 func TestClusterAdmin(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -31,7 +30,6 @@ func TestClusterAdmin(t *testing.T) {
 }
 
 func TestClusterAdminInvalidController(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -47,13 +45,12 @@ func TestClusterAdminInvalidController(t *testing.T) {
 		t.Fatal(errors.New("controller not set still cluster admin was created"))
 	}
 
-	if err != ErrControllerNotAvailable {
+	if !errors.Is(err, ErrControllerNotAvailable) {
 		t.Fatal(err)
 	}
 }
 
 func TestClusterAdminCreateTopic(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -82,7 +79,6 @@ func TestClusterAdminCreateTopic(t *testing.T) {
 }
 
 func TestClusterAdminCreateTopicWithInvalidTopicDetail(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -111,7 +107,6 @@ func TestClusterAdminCreateTopicWithInvalidTopicDetail(t *testing.T) {
 }
 
 func TestClusterAdminCreateTopicWithoutAuthorization(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -142,7 +137,6 @@ func TestClusterAdminCreateTopicWithoutAuthorization(t *testing.T) {
 }
 
 func TestClusterAdminListTopics(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -194,7 +188,6 @@ func TestClusterAdminListTopics(t *testing.T) {
 }
 
 func TestClusterAdminDeleteTopic(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -224,7 +217,6 @@ func TestClusterAdminDeleteTopic(t *testing.T) {
 }
 
 func TestClusterAdminDeleteEmptyTopic(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -243,7 +235,7 @@ func TestClusterAdminDeleteEmptyTopic(t *testing.T) {
 	}
 
 	err = admin.DeleteTopic("")
-	if err != ErrInvalidTopic {
+	if !errors.Is(err, ErrInvalidTopic) {
 		t.Fatal(err)
 	}
 
@@ -254,7 +246,6 @@ func TestClusterAdminDeleteEmptyTopic(t *testing.T) {
 }
 
 func TestClusterAdminCreatePartitions(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -284,7 +275,6 @@ func TestClusterAdminCreatePartitions(t *testing.T) {
 }
 
 func TestClusterAdminCreatePartitionsWithDiffVersion(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -303,7 +293,7 @@ func TestClusterAdminCreatePartitionsWithDiffVersion(t *testing.T) {
 	}
 
 	err = admin.CreatePartitions("my_topic", 3, nil, false)
-	if err != ErrUnsupportedVersion {
+	if !errors.Is(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
 	}
 
@@ -314,7 +304,6 @@ func TestClusterAdminCreatePartitionsWithDiffVersion(t *testing.T) {
 }
 
 func TestClusterAdminCreatePartitionsWithoutAuthorization(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -344,7 +333,6 @@ func TestClusterAdminCreatePartitionsWithoutAuthorization(t *testing.T) {
 }
 
 func TestClusterAdminAlterPartitionReassignments(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -385,7 +373,6 @@ func TestClusterAdminAlterPartitionReassignments(t *testing.T) {
 }
 
 func TestClusterAdminAlterPartitionReassignmentsWithDiffVersion(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -425,7 +412,6 @@ func TestClusterAdminAlterPartitionReassignmentsWithDiffVersion(t *testing.T) {
 }
 
 func TestClusterAdminListPartitionReassignments(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -473,7 +459,6 @@ func TestClusterAdminListPartitionReassignments(t *testing.T) {
 }
 
 func TestClusterAdminListPartitionReassignmentsWithDiffVersion(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -513,7 +498,6 @@ func TestClusterAdminListPartitionReassignmentsWithDiffVersion(t *testing.T) {
 }
 
 func TestClusterAdminDeleteRecords(t *testing.T) {
-	t.Parallel()
 	topicName := "my_topic"
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
@@ -559,7 +543,6 @@ func TestClusterAdminDeleteRecords(t *testing.T) {
 }
 
 func TestClusterAdminDeleteRecordsWithInCorrectBroker(t *testing.T) {
-	t.Parallel()
 	topicName := "my_topic"
 	seedBroker := NewMockBroker(t, 1)
 	secondBroker := NewMockBroker(t, 2)
@@ -611,7 +594,6 @@ func TestClusterAdminDeleteRecordsWithInCorrectBroker(t *testing.T) {
 }
 
 func TestClusterAdminDeleteRecordsWithDiffVersion(t *testing.T) {
-	t.Parallel()
 	topicName := "my_topic"
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
@@ -639,19 +621,20 @@ func TestClusterAdminDeleteRecordsWithDiffVersion(t *testing.T) {
 	partitionOffset[3] = 1000
 
 	err = admin.DeleteRecords(topicName, partitionOffset)
+	if err == nil {
+		t.Fatal("expected an ErrDeleteRecords")
+	}
+
 	if !strings.HasPrefix(err.Error(), "kafka server: failed to delete records") {
 		t.Fatal(err)
 	}
-	deleteRecordsError, ok := err.(ErrDeleteRecords)
 
-	if !ok {
+	if !errors.Is(err, ErrDeleteRecords) {
 		t.Fatal(err)
 	}
 
-	for _, err := range *deleteRecordsError.Errors {
-		if err != ErrUnsupportedVersion {
-			t.Fatal(err)
-		}
+	if !errors.Is(err, ErrUnsupportedVersion) {
+		t.Fatal(err)
 	}
 
 	err = admin.Close()
@@ -661,7 +644,6 @@ func TestClusterAdminDeleteRecordsWithDiffVersion(t *testing.T) {
 }
 
 func TestClusterAdminDescribeConfig(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -728,7 +710,6 @@ func TestClusterAdminDescribeConfig(t *testing.T) {
 }
 
 func TestClusterAdminDescribeConfigWithErrorCode(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -764,7 +745,6 @@ func TestClusterAdminDescribeConfigWithErrorCode(t *testing.T) {
 // TestClusterAdminDescribeBrokerConfig ensures that a describe broker config
 // is sent to the broker in the resource struct, _not_ the controller
 func TestClusterAdminDescribeBrokerConfig(t *testing.T) {
-	t.Parallel()
 	controllerBroker := NewMockBroker(t, 1)
 	defer controllerBroker.Close()
 	configBroker := NewMockBroker(t, 2)
@@ -815,7 +795,6 @@ func TestClusterAdminDescribeBrokerConfig(t *testing.T) {
 }
 
 func TestClusterAdminAlterConfig(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -849,7 +828,6 @@ func TestClusterAdminAlterConfig(t *testing.T) {
 }
 
 func TestClusterAdminAlterConfigWithErrorCode(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -881,7 +859,6 @@ func TestClusterAdminAlterConfigWithErrorCode(t *testing.T) {
 }
 
 func TestClusterAdminAlterBrokerConfig(t *testing.T) {
-	t.Parallel()
 	controllerBroker := NewMockBroker(t, 1)
 	defer controllerBroker.Close()
 	configBroker := NewMockBroker(t, 2)
@@ -936,7 +913,6 @@ func TestClusterAdminAlterBrokerConfig(t *testing.T) {
 }
 
 func TestClusterAdminIncrementalAlterConfig(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -978,7 +954,6 @@ func TestClusterAdminIncrementalAlterConfig(t *testing.T) {
 }
 
 func TestClusterAdminIncrementalAlterConfigWithErrorCode(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1018,7 +993,6 @@ func TestClusterAdminIncrementalAlterConfigWithErrorCode(t *testing.T) {
 }
 
 func TestClusterAdminIncrementalAlterBrokerConfig(t *testing.T) {
-	t.Parallel()
 	controllerBroker := NewMockBroker(t, 1)
 	defer controllerBroker.Close()
 	configBroker := NewMockBroker(t, 2)
@@ -1081,7 +1055,6 @@ func TestClusterAdminIncrementalAlterBrokerConfig(t *testing.T) {
 }
 
 func TestClusterAdminCreateAcl(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1113,8 +1086,39 @@ func TestClusterAdminCreateAcl(t *testing.T) {
 	}
 }
 
+func TestClusterAdminCreateAclErrorHandling(t *testing.T) {
+	seedBroker := NewMockBroker(t, 1)
+	defer seedBroker.Close()
+
+	seedBroker.SetHandlerByMap(map[string]MockResponse{
+		"MetadataRequest": NewMockMetadataResponse(t).
+			SetController(seedBroker.BrokerID()).
+			SetBroker(seedBroker.Addr(), seedBroker.BrokerID()),
+		"CreateAclsRequest": NewMockCreateAclsResponseWithError(t),
+	})
+
+	config := NewTestConfig()
+	config.Version = V1_0_0_0
+	admin, err := NewClusterAdmin([]string{seedBroker.Addr()}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := Resource{ResourceType: AclResourceTopic, ResourceName: "my_topic"}
+	a := Acl{Host: "localhost", Operation: AclOperationAlter, PermissionType: AclPermissionAny}
+
+	err = admin.CreateACL(r, a)
+	if err == nil {
+		t.Fatal(errors.New("error should have been thrown"))
+	}
+
+	err = admin.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClusterAdminListAcls(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1162,7 +1166,6 @@ func TestClusterAdminListAcls(t *testing.T) {
 }
 
 func TestClusterAdminDeleteAcl(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1199,7 +1202,6 @@ func TestClusterAdminDeleteAcl(t *testing.T) {
 }
 
 func TestDescribeTopic(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1238,7 +1240,6 @@ func TestDescribeTopic(t *testing.T) {
 }
 
 func TestDescribeTopicWithVersion0_11(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1277,7 +1278,6 @@ func TestDescribeTopicWithVersion0_11(t *testing.T) {
 }
 
 func TestDescribeConsumerGroup(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1321,7 +1321,6 @@ func TestDescribeConsumerGroup(t *testing.T) {
 }
 
 func TestListConsumerGroups(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1367,7 +1366,6 @@ func TestListConsumerGroups(t *testing.T) {
 }
 
 func TestListConsumerGroupsMultiBroker(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1432,7 +1430,6 @@ func TestListConsumerGroupsMultiBroker(t *testing.T) {
 }
 
 func TestListConsumerGroupOffsets(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1480,7 +1477,6 @@ func TestListConsumerGroupOffsets(t *testing.T) {
 }
 
 func TestDeleteConsumerGroup(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1502,6 +1498,7 @@ func TestDeleteConsumerGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer admin.Close()
 
 	err = admin.DeleteConsumerGroup(group)
 	if err != nil {
@@ -1510,7 +1507,6 @@ func TestDeleteConsumerGroup(t *testing.T) {
 }
 
 func TestDeleteOffset(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1542,12 +1538,13 @@ func TestDeleteOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteConsumerGroupOffset failed with error %v", err)
 	}
+	defer admin.Close()
 
 	// Test Error
 	handlerMap["DeleteOffsetsRequest"] = NewMockDeleteOffsetRequest(t).SetDeletedOffset(ErrNotCoordinatorForConsumer, topic, partition, ErrNoError)
 	seedBroker.SetHandlerByMap(handlerMap)
 	err = admin.DeleteConsumerGroupOffset(group, topic, partition)
-	if err != ErrNotCoordinatorForConsumer {
+	if !errors.Is(err, ErrNotCoordinatorForConsumer) {
 		t.Fatalf("DeleteConsumerGroupOffset should have failed with error %v", ErrNotCoordinatorForConsumer)
 	}
 
@@ -1555,7 +1552,7 @@ func TestDeleteOffset(t *testing.T) {
 	handlerMap["DeleteOffsetsRequest"] = NewMockDeleteOffsetRequest(t).SetDeletedOffset(ErrNoError, topic, partition, ErrGroupSubscribedToTopic)
 	seedBroker.SetHandlerByMap(handlerMap)
 	err = admin.DeleteConsumerGroupOffset(group, topic, partition)
-	if err != ErrGroupSubscribedToTopic {
+	if !errors.Is(err, ErrGroupSubscribedToTopic) {
 		t.Fatalf("DeleteConsumerGroupOffset should have failed with error %v", ErrGroupSubscribedToTopic)
 	}
 }
@@ -1563,7 +1560,6 @@ func TestDeleteOffset(t *testing.T) {
 // TestRefreshMetaDataWithDifferentController ensures that the cached
 // controller can be forcibly updated from Metadata by the admin client
 func TestRefreshMetaDataWithDifferentController(t *testing.T) {
-	t.Parallel()
 	seedBroker1 := NewMockBroker(t, 1)
 	seedBroker2 := NewMockBroker(t, 2)
 	defer seedBroker1.Close()
@@ -1583,6 +1579,7 @@ func TestRefreshMetaDataWithDifferentController(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer client.Close()
 
 	ca := clusterAdmin{client: client, conf: config}
 
@@ -1610,7 +1607,6 @@ func TestRefreshMetaDataWithDifferentController(t *testing.T) {
 }
 
 func TestDescribeLogDirs(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	defer seedBroker.Close()
 
@@ -1643,7 +1639,7 @@ func TestDescribeLogDirs(t *testing.T) {
 		t.Fatalf("Expected log dirs for broker %v to be returned, but it did not, got %v", seedBroker.BrokerID(), len(logDirs))
 	}
 	logDirsBroker := logDirs[0]
-	if logDirsBroker.ErrorCode != ErrNoError {
+	if !errors.Is(logDirsBroker.ErrorCode, ErrNoError) {
 		t.Fatalf("Expected no error for broker %v, but it was %v", seedBroker.BrokerID(), logDirsBroker.ErrorCode)
 	}
 	if logDirsBroker.Path != "/tmp/logs" {

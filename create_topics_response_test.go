@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -29,7 +30,6 @@ var (
 )
 
 func TestCreateTopicsResponse(t *testing.T) {
-	t.Parallel()
 	resp := &CreateTopicsResponse{
 		TopicErrors: map[string]*TopicError{
 			"topic": {
@@ -53,10 +53,13 @@ func TestCreateTopicsResponse(t *testing.T) {
 }
 
 func TestTopicError(t *testing.T) {
-	t.Parallel()
 	// Assert that TopicError satisfies error interface
 	var err error = &TopicError{
 		Err: ErrTopicAuthorizationFailed,
+	}
+
+	if !errors.Is(err, ErrTopicAuthorizationFailed) {
+		t.Errorf("unexpected errors.Is")
 	}
 
 	got := err.Error()

@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -35,7 +36,6 @@ var (
 )
 
 func TestDescribeGroupsResponse(t *testing.T) {
-	t.Parallel()
 	var response *DescribeGroupsResponse
 
 	response = new(DescribeGroupsResponse)
@@ -51,7 +51,7 @@ func TestDescribeGroupsResponse(t *testing.T) {
 	}
 
 	group0 := response.Groups[0]
-	if group0.Err != ErrNoError {
+	if !errors.Is(group0.Err, ErrNoError) {
 		t.Error("Unxpected groups[0].Err, found", group0.Err)
 	}
 	if group0.GroupId != "foo" {
@@ -83,7 +83,7 @@ func TestDescribeGroupsResponse(t *testing.T) {
 	}
 
 	group1 := response.Groups[1]
-	if group1.Err != ErrGroupAuthorizationFailed {
+	if !errors.Is(group1.Err, ErrGroupAuthorizationFailed) {
 		t.Error("Unxpected groups[1].Err, found", group0.Err)
 	}
 	if len(group1.Members) != 0 {

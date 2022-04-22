@@ -1,13 +1,13 @@
 package sarama
 
 import (
+	"errors"
 	"log"
 	"sync"
 	"testing"
 )
 
 func TestSyncProducer(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -58,7 +58,6 @@ func TestSyncProducer(t *testing.T) {
 }
 
 func TestSyncProducerBatch(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -107,7 +106,6 @@ func TestSyncProducerBatch(t *testing.T) {
 }
 
 func TestConcurrentSyncProducer(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -152,7 +150,6 @@ func TestConcurrentSyncProducer(t *testing.T) {
 }
 
 func TestSyncProducerToNonExistingTopic(t *testing.T) {
-	t.Parallel()
 	broker := NewMockBroker(t, 1)
 
 	metadataResponse := new(MetadataResponse)
@@ -175,7 +172,7 @@ func TestSyncProducerToNonExistingTopic(t *testing.T) {
 	broker.Returns(metadataResponse)
 
 	_, _, err = producer.SendMessage(&ProducerMessage{Topic: "unknown"})
-	if err != ErrUnknownTopicOrPartition {
+	if !errors.Is(err, ErrUnknownTopicOrPartition) {
 		t.Error("Uxpected ErrUnknownTopicOrPartition, found:", err)
 	}
 
@@ -184,7 +181,6 @@ func TestSyncProducerToNonExistingTopic(t *testing.T) {
 }
 
 func TestSyncProducerRecoveryWithRetriesDisabled(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader1 := NewMockBroker(t, 2)
 	leader2 := NewMockBroker(t, 3)
@@ -208,7 +204,7 @@ func TestSyncProducerRecoveryWithRetriesDisabled(t *testing.T) {
 	prodNotLeader.AddTopicPartition("my_topic", 0, ErrNotLeaderForPartition)
 	leader1.Returns(prodNotLeader)
 	_, _, err = producer.SendMessage(&ProducerMessage{Topic: "my_topic", Value: StringEncoder(TestMessage)})
-	if err != ErrNotLeaderForPartition {
+	if !errors.Is(err, ErrNotLeaderForPartition) {
 		t.Fatal(err)
 	}
 

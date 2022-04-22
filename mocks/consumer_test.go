@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"errors"
 	"sort"
 	"testing"
 
@@ -8,7 +9,6 @@ import (
 )
 
 func TestMockConsumerImplementsConsumerInterface(t *testing.T) {
-	t.Parallel()
 	var c interface{} = &Consumer{}
 	if _, ok := c.(sarama.Consumer); !ok {
 		t.Error("The mock consumer should implement the sarama.Consumer interface.")
@@ -21,7 +21,6 @@ func TestMockConsumerImplementsConsumerInterface(t *testing.T) {
 }
 
 func TestConsumerHandlesExpectations(t *testing.T) {
-	t.Parallel()
 	consumer := NewConsumer(t, NewTestConfig())
 	defer func() {
 		if err := consumer.Close(); err != nil {
@@ -43,7 +42,7 @@ func TestConsumerHandlesExpectations(t *testing.T) {
 		t.Error("Message was not as expected:", test0_msg)
 	}
 	test0_err := <-pc_test0.Errors()
-	if test0_err.Err != sarama.ErrOutOfBrokers {
+	if !errors.Is(test0_err, sarama.ErrOutOfBrokers) {
 		t.Error("Expected sarama.ErrOutOfBrokers, found:", test0_err.Err)
 	}
 
@@ -67,7 +66,6 @@ func TestConsumerHandlesExpectations(t *testing.T) {
 }
 
 func TestConsumerHandlesExpectationsPausingResuming(t *testing.T) {
-	t.Parallel()
 	consumer := NewConsumer(t, NewTestConfig())
 	defer func() {
 		if err := consumer.Close(); err != nil {
@@ -96,7 +94,7 @@ func TestConsumerHandlesExpectationsPausingResuming(t *testing.T) {
 		t.Error("Problem to pause consumption")
 	}
 	test0_err := <-pc_test0.Errors()
-	if test0_err.Err != sarama.ErrOutOfBrokers {
+	if !errors.Is(test0_err, sarama.ErrOutOfBrokers) {
 		t.Error("Expected sarama.ErrOutOfBrokers, found:", test0_err.Err)
 	}
 
@@ -147,7 +145,6 @@ func TestConsumerHandlesExpectationsPausingResuming(t *testing.T) {
 }
 
 func TestConsumerReturnsNonconsumedErrorsOnClose(t *testing.T) {
-	t.Parallel()
 	consumer := NewConsumer(t, NewTestConfig())
 	consumer.ExpectConsumePartition("test", 0, sarama.OffsetOldest).YieldError(sarama.ErrOutOfBrokers)
 	consumer.ExpectConsumePartition("test", 0, sarama.OffsetOldest).YieldError(sarama.ErrOutOfBrokers)
@@ -159,26 +156,28 @@ func TestConsumerReturnsNonconsumedErrorsOnClose(t *testing.T) {
 
 	select {
 	case <-pc.Messages():
-		t.Error("Did not epxect a message on the messages channel.")
+		t.Error("Did not expect a message on the messages channel.")
 	case err := <-pc.Errors():
-		if err.Err != sarama.ErrOutOfBrokers {
+		if !errors.Is(err, sarama.ErrOutOfBrokers) {
 			t.Error("Expected sarama.ErrOutOfBrokers, found", err)
 		}
 	}
 
-	errs := pc.Close().(sarama.ConsumerErrors)
-	if len(errs) != 1 && errs[0].Err != sarama.ErrOutOfBrokers {
+	var errs sarama.ConsumerErrors
+	if !errors.As(pc.Close(), &errs) {
+		t.Error("Expected Close to return ConsumerErrors")
+	}
+	if len(errs) != 1 && !errors.Is(errs[0], sarama.ErrOutOfBrokers) {
 		t.Error("Expected Close to return the remaining sarama.ErrOutOfBrokers")
 	}
 }
 
 func TestConsumerWithoutExpectationsOnPartition(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 
 	_, err := consumer.ConsumePartition("test", 1, sarama.OffsetOldest)
-	if err != errOutOfExpectations {
+	if !errors.Is(err, errOutOfExpectations) {
 		t.Error("Expected ConsumePartition to return errOutOfExpectations")
 	}
 
@@ -192,7 +191,6 @@ func TestConsumerWithoutExpectationsOnPartition(t *testing.T) {
 }
 
 func TestConsumerWithExpectationsOnUnconsumedPartition(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 	consumer.ExpectConsumePartition("test", 0, sarama.OffsetOldest).YieldMessage(&sarama.ConsumerMessage{Value: []byte("hello world")})
@@ -207,7 +205,6 @@ func TestConsumerWithExpectationsOnUnconsumedPartition(t *testing.T) {
 }
 
 func TestConsumerWithWrongOffsetExpectation(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 	consumer.ExpectConsumePartition("test", 0, sarama.OffsetOldest)
@@ -227,7 +224,6 @@ func TestConsumerWithWrongOffsetExpectation(t *testing.T) {
 }
 
 func TestConsumerViolatesMessagesDrainedExpectation(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 	consumer.ExpectConsumePartition("test", 0, sarama.OffsetOldest).
@@ -253,7 +249,6 @@ func TestConsumerViolatesMessagesDrainedExpectation(t *testing.T) {
 }
 
 func TestConsumerMeetsErrorsDrainedExpectation(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 
@@ -281,7 +276,6 @@ func TestConsumerMeetsErrorsDrainedExpectation(t *testing.T) {
 }
 
 func TestConsumerTopicMetadata(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 
@@ -325,11 +319,10 @@ func TestConsumerTopicMetadata(t *testing.T) {
 }
 
 func TestConsumerUnexpectedTopicMetadata(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 
-	if _, err := consumer.Topics(); err != sarama.ErrOutOfBrokers {
+	if _, err := consumer.Topics(); !errors.Is(err, sarama.ErrOutOfBrokers) {
 		t.Error("Expected sarama.ErrOutOfBrokers, found", err)
 	}
 
@@ -339,7 +332,6 @@ func TestConsumerUnexpectedTopicMetadata(t *testing.T) {
 }
 
 func TestConsumerOffsetsAreManagedCorrectlyWithOffsetOldest(t *testing.T) {
-	t.Parallel()
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())
 	pcmock := consumer.ExpectConsumePartition("test", 0, sarama.OffsetOldest)
@@ -372,7 +364,6 @@ func TestConsumerOffsetsAreManagedCorrectlyWithOffsetOldest(t *testing.T) {
 }
 
 func TestConsumerOffsetsAreManagedCorrectlyWithSpecifiedOffset(t *testing.T) {
-	t.Parallel()
 	startingOffset := int64(123)
 	trm := newTestReporterMock()
 	consumer := NewConsumer(trm, NewTestConfig())

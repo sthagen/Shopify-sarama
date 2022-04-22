@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -26,7 +27,6 @@ var (
 )
 
 func TestDeleteGroupsResponse(t *testing.T) {
-	t.Parallel()
 	var response *DeleteGroupsResponse
 
 	response = new(DeleteGroupsResponse)
@@ -43,7 +43,7 @@ func TestDeleteGroupsResponse(t *testing.T) {
 	if response.ThrottleTime != 0 {
 		t.Error("Expected no violation")
 	}
-	if response.GroupErrorCodes["foo"] != ErrClusterAuthorizationFailed {
+	if !errors.Is(response.GroupErrorCodes["foo"], ErrClusterAuthorizationFailed) {
 		t.Error("Expected error ErrClusterAuthorizationFailed, found:", response.GroupErrorCodes["foo"])
 	}
 
@@ -52,7 +52,7 @@ func TestDeleteGroupsResponse(t *testing.T) {
 	if response.ThrottleTime != 0 {
 		t.Error("Expected no violation")
 	}
-	if response.GroupErrorCodes["foo"] != ErrNoError {
+	if !errors.Is(response.GroupErrorCodes["foo"], ErrNoError) {
 		t.Error("Expected error ErrClusterAuthorizationFailed, found:", response.GroupErrorCodes["foo"])
 	}
 }

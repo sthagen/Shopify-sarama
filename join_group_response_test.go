@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -56,12 +57,11 @@ var (
 )
 
 func TestJoinGroupResponseV0(t *testing.T) {
-	t.Parallel()
 	var response *JoinGroupResponse
 
 	response = new(JoinGroupResponse)
 	testVersionDecodable(t, "no error", response, joinGroupResponseV0_NoError, 0)
-	if response.Err != ErrNoError {
+	if !errors.Is(response.Err, ErrNoError) {
 		t.Error("Decoding Err failed: no error expected but found", response.Err)
 	}
 	if response.GenerationId != 66051 {
@@ -79,7 +79,7 @@ func TestJoinGroupResponseV0(t *testing.T) {
 
 	response = new(JoinGroupResponse)
 	testVersionDecodable(t, "with error", response, joinGroupResponseV0_WithError, 0)
-	if response.Err != ErrInconsistentGroupProtocol {
+	if !errors.Is(response.Err, ErrInconsistentGroupProtocol) {
 		t.Error("Decoding Err failed: ErrInconsistentGroupProtocol expected but found", response.Err)
 	}
 	if response.GenerationId != 0 {
@@ -97,7 +97,7 @@ func TestJoinGroupResponseV0(t *testing.T) {
 
 	response = new(JoinGroupResponse)
 	testVersionDecodable(t, "with error", response, joinGroupResponseV0_Leader, 0)
-	if response.Err != ErrNoError {
+	if !errors.Is(response.Err, ErrNoError) {
 		t.Error("Decoding Err failed: ErrNoError expected but found", response.Err)
 	}
 	if response.GenerationId != 66051 {
@@ -118,10 +118,9 @@ func TestJoinGroupResponseV0(t *testing.T) {
 }
 
 func TestJoinGroupResponseV1(t *testing.T) {
-	t.Parallel()
 	response := new(JoinGroupResponse)
 	testVersionDecodable(t, "no error", response, joinGroupResponseV1, 1)
-	if response.Err != ErrNoError {
+	if !errors.Is(response.Err, ErrNoError) {
 		t.Error("Decoding Err failed: no error expected but found", response.Err)
 	}
 	if response.GenerationId != 66051 {
@@ -145,13 +144,12 @@ func TestJoinGroupResponseV1(t *testing.T) {
 }
 
 func TestJoinGroupResponseV2(t *testing.T) {
-	t.Parallel()
 	response := new(JoinGroupResponse)
 	testVersionDecodable(t, "no error", response, joinGroupResponseV2, 2)
 	if response.ThrottleTime != 100 {
 		t.Error("Decoding ThrottleTime failed, found:", response.ThrottleTime)
 	}
-	if response.Err != ErrNoError {
+	if !errors.Is(response.Err, ErrNoError) {
 		t.Error("Decoding Err failed: no error expected but found", response.Err)
 	}
 	if response.GenerationId != 66051 {

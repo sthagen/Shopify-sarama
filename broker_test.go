@@ -52,7 +52,6 @@ type brokerMetrics struct {
 }
 
 func TestBrokerAccessors(t *testing.T) {
-	t.Parallel()
 	broker := NewBroker("abc:123")
 
 	if broker.ID() != -1 {
@@ -112,11 +111,9 @@ func (p produceResponsePromise) Get() (*ProduceResponse, error) {
 }
 
 func TestSimpleBrokerCommunication(t *testing.T) {
-	t.Parallel()
 	for _, tt := range brokerTestTable {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			Logger.Printf("Testing broker communication for %s", tt.name)
 			mb := NewMockBroker(t, 0)
 			mb.Returns(&mockEncoder{tt.response})
@@ -155,11 +152,9 @@ func TestSimpleBrokerCommunication(t *testing.T) {
 }
 
 func TestBrokerFailedRequest(t *testing.T) {
-	t.Parallel()
 	for _, tt := range brokerFailedReqTestTable {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			t.Logf("Testing broker communication for %s", tt.name)
 			mb := NewMockBroker(t, 0)
 			if !tt.stopBroker {
@@ -188,7 +183,7 @@ func TestBrokerFailedRequest(t *testing.T) {
 			}
 			err = broker.Close()
 			if err != nil {
-				if tt.stopBroker && err == ErrNotConnected {
+				if tt.stopBroker && errors.Is(err, ErrNotConnected) {
 					// We expect the broker to not close properly
 					return
 				}
@@ -217,7 +212,6 @@ func newTokenProvider(token *AccessToken, err error) *TokenProvider {
 }
 
 func TestSASLOAuthBearer(t *testing.T) {
-	t.Parallel()
 	testTable := []struct {
 		name                      string
 		authidentity              string
@@ -290,7 +284,6 @@ func TestSASLOAuthBearer(t *testing.T) {
 	for i, test := range testTable {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			// mockBroker mocks underlying network logic and broker responses
 			mockBroker := NewMockBroker(t, 0)
 
@@ -331,8 +324,8 @@ func TestSASLOAuthBearer(t *testing.T) {
 
 			err = broker.authenticateViaSASL()
 
-			if test.expectedBrokerError != ErrNoError {
-				if test.expectedBrokerError != err {
+			if !errors.Is(test.expectedBrokerError, ErrNoError) {
+				if !errors.Is(err, test.expectedBrokerError) {
 					t.Errorf("[%d]:[%s] Expected %s auth error, got %s\n", i, test.name, test.expectedBrokerError, err)
 				}
 			} else if test.expectClientErr && err == nil {
@@ -373,7 +366,6 @@ func (m *MockSCRAMClient) Done() bool {
 var _ SCRAMClient = &MockSCRAMClient{}
 
 func TestSASLSCRAMSHAXXX(t *testing.T) {
-	t.Parallel()
 	testTable := []struct {
 		name               string
 		mockHandshakeErr   KError
@@ -415,7 +407,6 @@ func TestSASLSCRAMSHAXXX(t *testing.T) {
 	for i, test := range testTable {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			// mockBroker mocks underlying network logic and broker responses
 			mockBroker := NewMockBroker(t, 0)
 			broker := NewBroker(mockBroker.Addr())
@@ -432,10 +423,10 @@ func TestSASLSCRAMSHAXXX(t *testing.T) {
 			mockSASLAuthResponse := NewMockSaslAuthenticateResponse(t).SetAuthBytes([]byte(test.scramChallengeResp))
 			mockSASLHandshakeResponse := NewMockSaslHandshakeResponse(t).SetEnabledMechanisms([]string{SASLTypeSCRAMSHA256, SASLTypeSCRAMSHA512})
 
-			if test.mockSASLAuthErr != ErrNoError {
+			if !errors.Is(test.mockSASLAuthErr, ErrNoError) {
 				mockSASLAuthResponse = mockSASLAuthResponse.SetError(test.mockSASLAuthErr)
 			}
-			if test.mockHandshakeErr != ErrNoError {
+			if !errors.Is(test.mockHandshakeErr, ErrNoError) {
 				mockSASLHandshakeResponse = mockSASLHandshakeResponse.SetError(test.mockHandshakeErr)
 			}
 
@@ -466,12 +457,12 @@ func TestSASLSCRAMSHAXXX(t *testing.T) {
 
 			err = broker.authenticateViaSASL()
 
-			if test.mockSASLAuthErr != ErrNoError {
-				if test.mockSASLAuthErr != err {
+			if !errors.Is(test.mockSASLAuthErr, ErrNoError) {
+				if !errors.Is(err, test.mockSASLAuthErr) {
 					t.Errorf("[%d]:[%s] Expected %s SASL authentication error, got %s\n", i, test.name, test.mockHandshakeErr, err)
 				}
-			} else if test.mockHandshakeErr != ErrNoError {
-				if test.mockHandshakeErr != err {
+			} else if !errors.Is(test.mockHandshakeErr, ErrNoError) {
+				if !errors.Is(err, test.mockHandshakeErr) {
 					t.Errorf("[%d]:[%s] Expected %s handshake error, got %s\n", i, test.name, test.mockHandshakeErr, err)
 				}
 			} else if test.expectClientErr && err == nil {
@@ -486,7 +477,6 @@ func TestSASLSCRAMSHAXXX(t *testing.T) {
 }
 
 func TestSASLPlainAuth(t *testing.T) {
-	t.Parallel()
 	testTable := []struct {
 		name             string
 		authidentity     string
@@ -520,21 +510,20 @@ func TestSASLPlainAuth(t *testing.T) {
 	for i, test := range testTable {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			// mockBroker mocks underlying network logic and broker responses
 			mockBroker := NewMockBroker(t, 0)
 
 			mockSASLAuthResponse := NewMockSaslAuthenticateResponse(t).
 				SetAuthBytes([]byte(`response_payload`))
 
-			if test.mockAuthErr != ErrNoError {
+			if !errors.Is(test.mockAuthErr, ErrNoError) {
 				mockSASLAuthResponse = mockSASLAuthResponse.SetError(test.mockAuthErr)
 			}
 
 			mockSASLHandshakeResponse := NewMockSaslHandshakeResponse(t).
 				SetEnabledMechanisms([]string{SASLTypePlaintext})
 
-			if test.mockHandshakeErr != ErrNoError {
+			if !errors.Is(test.mockHandshakeErr, ErrNoError) {
 				mockSASLHandshakeResponse = mockSASLHandshakeResponse.SetError(test.mockHandshakeErr)
 			}
 
@@ -595,12 +584,12 @@ func TestSASLPlainAuth(t *testing.T) {
 				}
 			}
 
-			if test.mockAuthErr != ErrNoError {
-				if test.mockAuthErr != err {
+			if !errors.Is(test.mockAuthErr, ErrNoError) {
+				if !errors.Is(err, test.mockAuthErr) {
 					t.Errorf("[%d]:[%s] Expected %s auth error, got %s\n", i, test.name, test.mockAuthErr, err)
 				}
-			} else if test.mockHandshakeErr != ErrNoError {
-				if test.mockHandshakeErr != err {
+			} else if !errors.Is(test.mockHandshakeErr, ErrNoError) {
+				if !errors.Is(err, test.mockHandshakeErr) {
 					t.Errorf("[%d]:[%s] Expected %s handshake error, got %s\n", i, test.name, test.mockHandshakeErr, err)
 				}
 			} else if test.expectClientErr && err == nil {
@@ -617,7 +606,6 @@ func TestSASLPlainAuth(t *testing.T) {
 // TestSASLReadTimeout ensures that the broker connection won't block forever
 // if the remote end never responds after the handshake
 func TestSASLReadTimeout(t *testing.T) {
-	t.Parallel()
 	mockBroker := NewMockBroker(t, 0)
 	defer mockBroker.Close()
 
@@ -666,7 +654,6 @@ func TestSASLReadTimeout(t *testing.T) {
 }
 
 func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
-	t.Parallel()
 	testTable := []struct {
 		name               string
 		error              error
@@ -717,7 +704,6 @@ func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
 	for i, test := range testTable {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			mockBroker := NewMockBroker(t, 0)
 			// broker executes SASL requests against mockBroker
 
@@ -789,7 +775,6 @@ func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
 }
 
 func TestBuildClientFirstMessage(t *testing.T) {
-	t.Parallel()
 	testTable := []struct {
 		name        string
 		token       *AccessToken
@@ -828,7 +813,6 @@ func TestBuildClientFirstMessage(t *testing.T) {
 	for i, test := range testTable {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			actual, err := buildClientFirstMessage(test.token)
 
 			if !reflect.DeepEqual(test.expected, actual) {
@@ -842,6 +826,165 @@ func TestBuildClientFirstMessage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKip368ReAuthenticationSuccess(t *testing.T) {
+	sessionLifetimeMs := int64(100)
+
+	mockBroker := NewMockBroker(t, 0)
+
+	countSaslAuthRequests := func() (count int) {
+		for _, rr := range mockBroker.History() {
+			switch rr.Request.(type) {
+			case *SaslAuthenticateRequest:
+				count++
+			}
+		}
+		return
+	}
+
+	mockSASLAuthResponse := NewMockSaslAuthenticateResponse(t).
+		SetAuthBytes([]byte(`response_payload`)).
+		SetSessionLifetimeMs(sessionLifetimeMs)
+
+	mockSASLHandshakeResponse := NewMockSaslHandshakeResponse(t).
+		SetEnabledMechanisms([]string{SASLTypePlaintext})
+
+	mockApiVersions := NewMockApiVersionsResponse(t)
+
+	mockBroker.SetHandlerByMap(map[string]MockResponse{
+		"SaslAuthenticateRequest": mockSASLAuthResponse,
+		"SaslHandshakeRequest":    mockSASLHandshakeResponse,
+		"ApiVersionsRequest":      mockApiVersions,
+	})
+
+	broker := NewBroker(mockBroker.Addr())
+
+	conf := NewTestConfig()
+	conf.Net.SASL.Enable = true
+	conf.Net.SASL.Mechanism = SASLTypePlaintext
+	conf.Net.SASL.Version = SASLHandshakeV1
+	conf.Net.SASL.AuthIdentity = "authid"
+	conf.Net.SASL.User = "token"
+	conf.Net.SASL.Password = "password"
+
+	broker.conf = conf
+	broker.conf.Version = V2_2_0_0
+
+	err := broker.Open(conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = broker.Close() })
+
+	connected, err := broker.Connected()
+	if err != nil || !connected {
+		t.Fatal(err)
+	}
+
+	actualSaslAuthRequests := countSaslAuthRequests()
+	if actualSaslAuthRequests != 1 {
+		t.Fatalf("unexpected number of SaslAuthRequests during initial authentication: %d", actualSaslAuthRequests)
+	}
+
+	timeout := time.After(time.Duration(sessionLifetimeMs) * time.Millisecond)
+
+loop:
+	for actualSaslAuthRequests < 2 {
+		select {
+		case <-timeout:
+			break loop
+		default:
+			time.Sleep(10 * time.Millisecond)
+			// put some traffic on the wire
+			_, err = broker.ApiVersions(&ApiVersionsRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			actualSaslAuthRequests = countSaslAuthRequests()
+		}
+	}
+
+	if actualSaslAuthRequests < 2 {
+		t.Fatalf("sasl reauth has not occurred within expected timeframe")
+	}
+
+	mockBroker.Close()
+}
+
+func TestKip368ReAuthenticationFailure(t *testing.T) {
+	sessionLifetimeMs := int64(100)
+
+	mockBroker := NewMockBroker(t, 0)
+
+	mockSASLAuthResponse := NewMockSaslAuthenticateResponse(t).
+		SetAuthBytes([]byte(`response_payload`)).
+		SetSessionLifetimeMs(sessionLifetimeMs)
+
+	mockSASLAuthErrorResponse := NewMockSaslAuthenticateResponse(t).
+		SetError(ErrSASLAuthenticationFailed)
+
+	mockSASLHandshakeResponse := NewMockSaslHandshakeResponse(t).
+		SetEnabledMechanisms([]string{SASLTypePlaintext})
+
+	mockApiVersions := NewMockApiVersionsResponse(t)
+
+	mockBroker.SetHandlerByMap(map[string]MockResponse{
+		"SaslAuthenticateRequest": mockSASLAuthResponse,
+		"SaslHandshakeRequest":    mockSASLHandshakeResponse,
+		"ApiVersionsRequest":      mockApiVersions,
+	})
+
+	broker := NewBroker(mockBroker.Addr())
+
+	conf := NewTestConfig()
+	conf.Net.SASL.Enable = true
+	conf.Net.SASL.Mechanism = SASLTypePlaintext
+	conf.Net.SASL.Version = SASLHandshakeV1
+	conf.Net.SASL.AuthIdentity = "authid"
+	conf.Net.SASL.User = "token"
+	conf.Net.SASL.Password = "password"
+
+	broker.conf = conf
+	broker.conf.Version = V2_2_0_0
+
+	err := broker.Open(conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = broker.Close() })
+
+	connected, err := broker.Connected()
+	if err != nil || !connected {
+		t.Fatal(err)
+	}
+
+	mockBroker.SetHandlerByMap(map[string]MockResponse{
+		"SaslAuthenticateRequest": mockSASLAuthErrorResponse,
+		"SaslHandshakeRequest":    mockSASLHandshakeResponse,
+		"ApiVersionsRequest":      mockApiVersions,
+	})
+
+	timeout := time.After(time.Duration(sessionLifetimeMs) * time.Millisecond)
+
+	var apiVersionError error
+loop:
+	for apiVersionError == nil {
+		select {
+		case <-timeout:
+			break loop
+		default:
+			time.Sleep(10 * time.Millisecond)
+			// put some traffic on the wire
+			_, apiVersionError = broker.ApiVersions(&ApiVersionsRequest{})
+		}
+	}
+
+	if !errors.Is(apiVersionError, ErrSASLAuthenticationFailed) {
+		t.Fatalf("sasl reauth has not failed in the expected way %v", apiVersionError)
+	}
+
+	mockBroker.Close()
 }
 
 // We're not testing encoding/decoding here, so most of the requests/responses will be empty for simplicity's sake

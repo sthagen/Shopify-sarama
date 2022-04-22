@@ -3,6 +3,7 @@ package sarama
 import (
 	"errors"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"strconv"
@@ -17,31 +18,67 @@ import (
 
 const TestMessage = "ABC THE MESSAGE"
 
-func closeProducer(t *testing.T, p AsyncProducer) {
+func closeProducerWithTimeout(t *testing.T, p AsyncProducer, timeout time.Duration) {
 	var wg sync.WaitGroup
 	p.AsyncClose()
 
+	closer := make(chan struct{})
+	timer := time.AfterFunc(timeout, func() {
+		t.Error("timeout")
+		close(closer)
+	})
+	defer timer.Stop()
+
 	wg.Add(2)
 	go func() {
-		for range p.Successes() {
-			t.Error("Unexpected message on Successes()")
+		defer wg.Done()
+		for {
+			select {
+			case <-closer:
+				return
+			case _, ok := <-p.Successes():
+				if !ok {
+					return
+				}
+				t.Error("Unexpected message on Successes()")
+			}
 		}
-		wg.Done()
 	}()
 	go func() {
-		for msg := range p.Errors() {
-			t.Error(msg.Err)
+		defer wg.Done()
+		for {
+			select {
+			case <-closer:
+				return
+			case msg, ok := <-p.Errors():
+				if !ok {
+					return
+				}
+				t.Error(msg.Err)
+			}
 		}
-		wg.Done()
 	}()
 	wg.Wait()
 }
 
-func expectResults(t *testing.T, p AsyncProducer, successes, errors int) {
+func closeProducer(t *testing.T, p AsyncProducer) {
+	closeProducerWithTimeout(t, p, 5*time.Minute)
+}
+
+func expectResultsWithTimeout(t *testing.T, p AsyncProducer, successes, errors int, timeout time.Duration) {
 	t.Helper()
 	expect := successes + errors
+	defer func() {
+		if successes != 0 || errors != 0 {
+			t.Error("Unexpected successes", successes, "or errors", errors)
+		}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	for expect > 0 {
 		select {
+		case <-timer.C:
+			return
 		case msg := <-p.Errors():
 			if msg.Msg.flags != 0 {
 				t.Error("Message had flags set")
@@ -62,9 +99,10 @@ func expectResults(t *testing.T, p AsyncProducer, successes, errors int) {
 			}
 		}
 	}
-	if successes != 0 || errors != 0 {
-		t.Error("Unexpected successes", successes, "or errors", errors)
-	}
+}
+
+func expectResults(t *testing.T, p AsyncProducer, successes, errors int) {
+	expectResultsWithTimeout(t, p, successes, errors, 5*time.Minute)
 }
 
 type testPartitioner chan *int32
@@ -100,7 +138,6 @@ func (f flakyEncoder) Encode() ([]byte, error) {
 }
 
 func TestAsyncProducer(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -150,7 +187,6 @@ done:
 }
 
 func TestAsyncProducerMultipleFlushes(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -186,7 +222,6 @@ func TestAsyncProducerMultipleFlushes(t *testing.T) {
 }
 
 func TestAsyncProducerMultipleBrokers(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader0 := NewMockBroker(t, 2)
 	leader1 := NewMockBroker(t, 3)
@@ -227,7 +262,6 @@ func TestAsyncProducerMultipleBrokers(t *testing.T) {
 }
 
 func TestAsyncProducerCustomPartitioner(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -270,7 +304,6 @@ func TestAsyncProducerCustomPartitioner(t *testing.T) {
 }
 
 func TestAsyncProducerFailureRetry(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader1 := NewMockBroker(t, 2)
 	leader2 := NewMockBroker(t, 3)
@@ -319,7 +352,6 @@ func TestAsyncProducerFailureRetry(t *testing.T) {
 }
 
 func TestAsyncProducerRecoveryWithRetriesDisabled(t *testing.T) {
-	t.Parallel()
 	tt := func(t *testing.T, kErr KError) {
 		seedBroker := NewMockBroker(t, 0)
 		broker1 := NewMockBroker(t, 1)
@@ -397,18 +429,15 @@ func TestAsyncProducerRecoveryWithRetriesDisabled(t *testing.T) {
 	}
 
 	t.Run("retriable error", func(t *testing.T) {
-		t.Parallel()
 		tt(t, ErrNotLeaderForPartition)
 	})
 
 	t.Run("non-retriable error", func(t *testing.T) {
-		t.Parallel()
 		tt(t, ErrNotController)
 	})
 }
 
 func TestAsyncProducerEncoderFailures(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -447,7 +476,6 @@ func TestAsyncProducerEncoderFailures(t *testing.T) {
 // If a Kafka broker becomes unavailable and then returns back in service, then
 // producer reconnects to it and continues sending messages.
 func TestAsyncProducerBrokerBounce(t *testing.T) {
-	t.Parallel()
 	// Given
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
@@ -489,7 +517,6 @@ func TestAsyncProducerBrokerBounce(t *testing.T) {
 }
 
 func TestAsyncProducerBrokerBounceWithStaleMetadata(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader1 := NewMockBroker(t, 2)
 	leader2 := NewMockBroker(t, 3)
@@ -533,7 +560,6 @@ func TestAsyncProducerBrokerBounceWithStaleMetadata(t *testing.T) {
 }
 
 func TestAsyncProducerMultipleRetries(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader1 := NewMockBroker(t, 2)
 	leader2 := NewMockBroker(t, 3)
@@ -590,7 +616,6 @@ func TestAsyncProducerMultipleRetries(t *testing.T) {
 }
 
 func TestAsyncProducerMultipleRetriesWithBackoffFunc(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader1 := NewMockBroker(t, 2)
 	leader2 := NewMockBroker(t, 3)
@@ -659,7 +684,6 @@ func TestAsyncProducerMultipleRetriesWithBackoffFunc(t *testing.T) {
 
 // https://github.com/Shopify/sarama/issues/2129
 func TestAsyncProducerMultipleRetriesWithConcurrentRequests(t *testing.T) {
-	t.Parallel()
 	//Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
@@ -707,8 +731,113 @@ func TestAsyncProducerMultipleRetriesWithConcurrentRequests(t *testing.T) {
 	closeProducer(t, producer)
 }
 
+func TestAsyncProducerBrokerRestart(t *testing.T) {
+	// Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
+
+	seedBroker := NewMockBroker(t, 1)
+	leader := NewMockBroker(t, 2)
+
+	var leaderLock sync.Mutex
+
+	// The seed broker only handles Metadata request
+	seedBroker.setHandler(func(req *request) (res encoderWithHeader) {
+		leaderLock.Lock()
+		defer leaderLock.Unlock()
+		metadataLeader := new(MetadataResponse)
+		metadataLeader.AddBroker(leader.Addr(), leader.BrokerID())
+		metadataLeader.AddTopicPartition("my_topic", 0, leader.BrokerID(), nil, nil, nil, ErrNoError)
+		return metadataLeader
+	})
+
+	var emptyValues int32 = 0
+
+	countRecordsWithEmptyValue := func(req *request) {
+		preq := req.body.(*ProduceRequest)
+		if batch := preq.records["my_topic"][0].RecordBatch; batch != nil {
+			for _, record := range batch.Records {
+				if len(record.Value) == 0 {
+					atomic.AddInt32(&emptyValues, 1)
+				}
+			}
+		}
+		if batch := preq.records["my_topic"][0].MsgSet; batch != nil {
+			for _, record := range batch.Messages {
+				if len(record.Msg.Value) == 0 {
+					atomic.AddInt32(&emptyValues, 1)
+				}
+			}
+		}
+	}
+
+	leader.setHandler(func(req *request) (res encoderWithHeader) {
+		countRecordsWithEmptyValue(req)
+
+		time.Sleep(50 * time.Millisecond)
+
+		prodSuccess := new(ProduceResponse)
+		prodSuccess.AddTopicPartition("my_topic", 0, ErrNotLeaderForPartition)
+		return prodSuccess
+	})
+
+	config := NewTestConfig()
+	config.Producer.Retry.Backoff = 250 * time.Millisecond
+	config.Producer.Flush.MaxMessages = 1
+	config.Producer.Return.Errors = true
+	config.Producer.Return.Successes = true
+	config.Producer.Retry.Max = 10
+
+	producer, err := NewAsyncProducer([]string{seedBroker.Addr()}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+
+	pushMsg := func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			producer.Input() <- &ProducerMessage{Topic: "my_topic", Key: nil, Value: StringEncoder(TestMessage)}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	wg.Add(1)
+	go pushMsg()
+
+	for i := 0; i < 3; i++ {
+		time.Sleep(100 * time.Millisecond)
+
+		wg.Add(1)
+		go pushMsg()
+	}
+
+	leader.Close()
+	leaderLock.Lock()
+	leader = NewMockBroker(t, 2)
+	leaderLock.Unlock()
+	leader.setHandler(func(req *request) (res encoderWithHeader) {
+		countRecordsWithEmptyValue(req)
+
+		prodSuccess := new(ProduceResponse)
+		prodSuccess.AddTopicPartition("my_topic", 0, ErrNoError)
+		return prodSuccess
+	})
+
+	wg.Wait()
+
+	expectResultsWithTimeout(t, producer, 40, 0, 10*time.Second)
+
+	seedBroker.Close()
+	leader.Close()
+
+	closeProducerWithTimeout(t, producer, 5*time.Second)
+
+	if emptyValues := atomic.LoadInt32(&emptyValues); emptyValues > 0 {
+		t.Fatalf("%d empty values", emptyValues)
+	}
+}
+
 func TestAsyncProducerOutOfRetries(t *testing.T) {
-	t.Parallel()
 	t.Skip("Enable once bug #294 is fixed.")
 
 	seedBroker := NewMockBroker(t, 1)
@@ -740,7 +869,7 @@ func TestAsyncProducerOutOfRetries(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		select {
 		case msg := <-producer.Errors():
-			if msg.Err != ErrNotLeaderForPartition {
+			if !errors.Is(msg.Err, ErrNotLeaderForPartition) {
 				t.Error(msg.Err)
 			}
 		case <-producer.Successes():
@@ -766,7 +895,6 @@ func TestAsyncProducerOutOfRetries(t *testing.T) {
 }
 
 func TestAsyncProducerRetryWithReferenceOpen(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 	leaderAddr := leader.Addr()
@@ -824,7 +952,6 @@ func TestAsyncProducerRetryWithReferenceOpen(t *testing.T) {
 }
 
 func TestAsyncProducerFlusherRetryCondition(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -891,7 +1018,6 @@ func TestAsyncProducerFlusherRetryCondition(t *testing.T) {
 }
 
 func TestAsyncProducerRetryShutdown(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -916,7 +1042,7 @@ func TestAsyncProducerRetryShutdown(t *testing.T) {
 	time.Sleep(5 * time.Millisecond) // let the shutdown goroutine kick in
 
 	producer.Input() <- &ProducerMessage{Topic: "FOO"}
-	if err := <-producer.Errors(); err.Err != ErrShuttingDown {
+	if err := <-producer.Errors(); !errors.Is(err.Err, ErrShuttingDown) {
 		t.Error(err)
 	}
 
@@ -941,7 +1067,6 @@ func TestAsyncProducerRetryShutdown(t *testing.T) {
 }
 
 func TestAsyncProducerNoReturns(t *testing.T) {
-	t.Parallel()
 	seedBroker := NewMockBroker(t, 1)
 	leader := NewMockBroker(t, 2)
 
@@ -982,7 +1107,6 @@ func TestAsyncProducerNoReturns(t *testing.T) {
 }
 
 func TestAsyncProducerIdempotentGoldenPath(t *testing.T) {
-	t.Parallel()
 	broker := NewMockBroker(t, 1)
 
 	metadataResponse := &MetadataResponse{
@@ -1031,7 +1155,6 @@ func TestAsyncProducerIdempotentGoldenPath(t *testing.T) {
 }
 
 func TestAsyncProducerIdempotentRetryCheckBatch(t *testing.T) {
-	t.Parallel()
 	// Logger = log.New(os.Stderr, "", log.LstdFlags)
 	tests := []struct {
 		name           string
@@ -1179,7 +1302,6 @@ func TestAsyncProducerIdempotentRetryCheckBatch(t *testing.T) {
 }
 
 func TestAsyncProducerIdempotentErrorOnOutOfSeq(t *testing.T) {
-	t.Parallel()
 	broker := NewMockBroker(t, 1)
 
 	metadataResponse := &MetadataResponse{
@@ -1229,7 +1351,6 @@ func TestAsyncProducerIdempotentErrorOnOutOfSeq(t *testing.T) {
 }
 
 func TestAsyncProducerIdempotentEpochRollover(t *testing.T) {
-	t.Parallel()
 	broker := NewMockBroker(t, 1)
 	defer broker.Close()
 
@@ -1295,6 +1416,83 @@ func TestAsyncProducerIdempotentEpochRollover(t *testing.T) {
 	}
 	if lastProduceBatch.ProducerEpoch <= 1 {
 		t.Error("second epoch was not > 1")
+	}
+}
+
+// TestAsyncProducerIdempotentEpochExhaustion ensures that producer requests
+// a new producerID when producerEpoch is exhausted
+func TestAsyncProducerIdempotentEpochExhaustion(t *testing.T) {
+	broker := NewMockBroker(t, 1)
+	defer broker.Close()
+
+	var (
+		initialProducerID = int64(1000)
+		newProducerID     = initialProducerID + 1
+	)
+
+	metadataResponse := &MetadataResponse{
+		Version:      1,
+		ControllerID: 1,
+	}
+	metadataResponse.AddBroker(broker.Addr(), broker.BrokerID())
+	metadataResponse.AddTopicPartition("my_topic", 0, broker.BrokerID(), nil, nil, nil, ErrNoError)
+	broker.Returns(metadataResponse)
+
+	initProducerID := &InitProducerIDResponse{
+		ThrottleTime:  0,
+		ProducerID:    initialProducerID,
+		ProducerEpoch: math.MaxInt16, // Mock ProducerEpoch at the exhaustion point
+	}
+	broker.Returns(initProducerID)
+
+	config := NewTestConfig()
+	config.Producer.Flush.Messages = 10
+	config.Producer.Flush.Frequency = 10 * time.Millisecond
+	config.Producer.Return.Successes = true
+	config.Producer.Retry.Max = 1 // This test needs to exercise what happens when retries exhaust
+	config.Producer.RequiredAcks = WaitForAll
+	config.Producer.Retry.Backoff = 0
+	config.Producer.Idempotent = true
+	config.Net.MaxOpenRequests = 1
+	config.Version = V0_11_0_0
+
+	producer, err := NewAsyncProducer([]string{broker.Addr()}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeProducer(t, producer)
+
+	producer.Input() <- &ProducerMessage{Topic: "my_topic", Value: StringEncoder("hello")}
+	prodError := &ProduceResponse{
+		Version:      3,
+		ThrottleTime: 0,
+	}
+	prodError.AddTopicPartition("my_topic", 0, ErrBrokerNotAvailable)
+	broker.Returns(prodError)
+	broker.Returns(&InitProducerIDResponse{
+		ProducerID: newProducerID,
+	})
+
+	<-producer.Errors()
+
+	lastProduceReqRes := broker.history[len(broker.history)-2] // last is InitProducerIDRequest
+	lastProduceBatch := lastProduceReqRes.Request.(*ProduceRequest).records["my_topic"][0].RecordBatch
+	if lastProduceBatch.FirstSequence != 0 {
+		t.Error("first sequence not zero")
+	}
+	if lastProduceBatch.ProducerEpoch <= 1 {
+		t.Error("first epoch was not at exhaustion point")
+	}
+
+	// Now we should produce with a new ProducerID
+	producer.Input() <- &ProducerMessage{Topic: "my_topic", Value: StringEncoder("hello")}
+	broker.Returns(prodError)
+	<-producer.Errors()
+
+	lastProduceReqRes = broker.history[len(broker.history)-1]
+	lastProduceBatch = lastProduceReqRes.Request.(*ProduceRequest).records["my_topic"][0].RecordBatch
+	if lastProduceBatch.ProducerID != newProducerID || lastProduceBatch.ProducerEpoch != 0 {
+		t.Error("producer did not requested a new producerID")
 	}
 }
 
@@ -1397,7 +1595,6 @@ func testProducerInterceptor(
 }
 
 func TestAsyncProducerInterceptors(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name          string
 		interceptors  []ProducerInterceptor
@@ -1451,9 +1648,16 @@ func TestAsyncProducerInterceptors(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			testProducerInterceptor(t, tt.interceptors, tt.expectationFn)
 		})
+	}
+}
+
+func TestProducerError(t *testing.T) {
+	t.Parallel()
+	err := ProducerError{Err: ErrOutOfBrokers}
+	if !errors.Is(err, ErrOutOfBrokers) {
+		t.Error("unexpected errors.Is")
 	}
 }
 
