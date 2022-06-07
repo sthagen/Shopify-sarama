@@ -4,6 +4,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -95,7 +97,6 @@ var (
 	describeGroupsResponseEmptyV3 = []byte{
 		0, 0, 0, 0, // throttle time 0
 		0, 0, 0, 0, // no groups
-		0, 0, 0, 0, // authorizedOperations 0
 	}
 
 	describeGroupsResponsePopulatedV3 = []byte{
@@ -113,6 +114,7 @@ var (
 		0, 9, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't', // Client Host
 		0, 0, 0, 3, 0x01, 0x02, 0x03, // MemberMetadata
 		0, 0, 0, 3, 0x04, 0x05, 0x06, // MemberAssignment
+		0, 0, 0, 0, // authorizedOperations 0
 
 		0, 30, // ErrGroupAuthorizationFailed
 		0, 0,
@@ -120,14 +122,13 @@ var (
 		0, 0,
 		0, 0,
 		0, 0, 0, 0,
-
 		0, 0, 0, 0, // authorizedOperations 0
+
 	}
 
 	describeGroupsResponseEmptyV4 = []byte{
 		0, 0, 0, 0, // throttle time 0
 		0, 0, 0, 0, // no groups
-		0, 0, 0, 0, // authorizedOperations 0
 	}
 
 	describeGroupsResponsePopulatedV4 = []byte{
@@ -146,6 +147,7 @@ var (
 		0, 9, 'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't', // Client Host
 		0, 0, 0, 3, 0x01, 0x02, 0x03, // MemberMetadata
 		0, 0, 0, 3, 0x04, 0x05, 0x06, // MemberAssignment
+		0, 0, 0, 0, // authorizedOperations 0
 
 		0, 30, // ErrGroupAuthorizationFailed
 		0, 0,
@@ -153,15 +155,15 @@ var (
 		0, 0,
 		0, 0,
 		0, 0, 0, 0,
-
 		0, 0, 0, 0, // authorizedOperations 0
+
 	}
 )
 
 func TestDescribeGroupsResponseV1plus(t *testing.T) {
 	groupInstanceId := "gid"
 	tests := []struct {
-		CaseName     string
+		Name         string
 		Version      int16
 		MessageBytes []byte
 		Message      *DescribeGroupsResponse
@@ -171,10 +173,7 @@ func TestDescribeGroupsResponseV1plus(t *testing.T) {
 			3,
 			describeGroupsResponseEmptyV3,
 			&DescribeGroupsResponse{
-				Version:              3,
-				ThrottleTimeMs:       int32(0),
-				Groups:               []*GroupDescription{},
-				AuthorizedOperations: int32(0),
+				Version: 3,
 			},
 		},
 		{
@@ -195,6 +194,7 @@ func TestDescribeGroupsResponseV1plus(t *testing.T) {
 						Members: map[string]*GroupMemberDescription{
 							"id": {
 								Version:          3,
+								MemberId:         "id",
 								ClientId:         "sarama",
 								ClientHost:       "localhost",
 								MemberMetadata:   []byte{1, 2, 3},
@@ -203,16 +203,11 @@ func TestDescribeGroupsResponseV1plus(t *testing.T) {
 						},
 					},
 					{
-						Version:      3,
-						Err:          KError(30),
-						GroupId:      "",
-						State:        "",
-						ProtocolType: "",
-						Protocol:     "",
-						Members:      nil,
+						Version:   3,
+						Err:       KError(30),
+						ErrorCode: 30,
 					},
 				},
-				AuthorizedOperations: int32(0),
 			},
 		},
 		{
@@ -220,10 +215,7 @@ func TestDescribeGroupsResponseV1plus(t *testing.T) {
 			4,
 			describeGroupsResponseEmptyV4,
 			&DescribeGroupsResponse{
-				Version:              4,
-				ThrottleTimeMs:       int32(0),
-				Groups:               []*GroupDescription{},
-				AuthorizedOperations: int32(0),
+				Version: 4,
 			},
 		},
 		{
@@ -244,6 +236,7 @@ func TestDescribeGroupsResponseV1plus(t *testing.T) {
 						Members: map[string]*GroupMemberDescription{
 							"id": {
 								Version:          4,
+								MemberId:         "id",
 								GroupInstanceId:  &groupInstanceId,
 								ClientId:         "sarama",
 								ClientHost:       "localhost",
@@ -253,26 +246,23 @@ func TestDescribeGroupsResponseV1plus(t *testing.T) {
 						},
 					},
 					{
-						Version:      4,
-						Err:          KError(30),
-						GroupId:      "",
-						State:        "",
-						ProtocolType: "",
-						Protocol:     "",
-						Members:      nil,
+						Version:   4,
+						Err:       KError(30),
+						ErrorCode: 30,
 					},
 				},
-				AuthorizedOperations: int32(0),
 			},
 		},
 	}
 
 	for _, c := range tests {
-		response := new(DescribeGroupsResponse)
-		testVersionDecodable(t, c.CaseName, response, c.MessageBytes, c.Version)
-		if !reflect.DeepEqual(c.Message, response) {
-			t.Errorf("case %s decode failed, expected:%+v got %+v", c.CaseName, c.Message, response)
-		}
-		testEncodable(t, c.CaseName, c.Message, c.MessageBytes)
+		t.Run(c.Name, func(t *testing.T) {
+			response := new(DescribeGroupsResponse)
+			testVersionDecodable(t, c.Name, response, c.MessageBytes, c.Version)
+			if !assert.Equal(t, c.Message, response) {
+				t.Errorf("case %s decode failed, expected:%+v got %+v", c.Name, c.Message, response)
+			}
+			testEncodable(t, c.Name, c.Message, c.MessageBytes)
+		})
 	}
 }
