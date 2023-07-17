@@ -1105,7 +1105,7 @@ func TestConsumeMessagesFromReadReplicaErrorUnknown(t *testing.T) {
 // consumer connects back to the new leader to resume consumption and doesn't
 // continue consuming from the follower.
 //
-// See https://github.com/Shopify/sarama/issues/1927
+// See https://github.com/IBM/sarama/issues/1927
 func TestConsumeMessagesTrackLeader(t *testing.T) {
 	cfg := NewConfig()
 	cfg.ClientID = t.Name()
@@ -1866,7 +1866,7 @@ func assertMessageKey(t *testing.T, msg *ConsumerMessage, expectedKey Encoder) {
 	t.Helper()
 
 	wantKey, _ := expectedKey.Encode()
-	if bytes.Compare(msg.Key, wantKey) != 0 {
+	if !bytes.Equal(msg.Key, wantKey) {
 		t.Fatalf("Incorrect key for message. expected=%s, actual=%s", expectedKey, msg.Key)
 	}
 }
@@ -1875,7 +1875,7 @@ func assertMessageValue(t *testing.T, msg *ConsumerMessage, expectedValue Encode
 	t.Helper()
 
 	wantValue, _ := expectedValue.Encode()
-	if bytes.Compare(msg.Value, wantValue) != 0 {
+	if !bytes.Equal(msg.Value, wantValue) {
 		t.Fatalf("Incorrect value for message. expected=%s, actual=%s", expectedValue, msg.Key)
 	}
 }
