@@ -304,7 +304,7 @@ func (om *offsetManager) constructRequest() *OffsetCommitRequest {
 		for _, pom := range topicManagers {
 			pom.lock.Lock()
 			if pom.dirty {
-				r.AddBlock(pom.topic, pom.partition, pom.offset, pom.leaderEpoch, perPartitionTimestamp, pom.metadata)
+				r.AddBlockWithLeaderEpoch(pom.topic, pom.partition, pom.offset, pom.leaderEpoch, perPartitionTimestamp, pom.metadata)
 			}
 			pom.lock.Unlock()
 		}
@@ -359,7 +359,7 @@ func (om *offsetManager) handleResponse(broker *Broker, req *OffsetCommitRequest
 				// nothing wrong but we didn't commit, we'll get it next time round
 			case ErrFencedInstancedId:
 				pom.handleError(err)
-				// TODO close the whole consumer for instacne fenced....
+				// TODO close the whole consumer for instance fenced....
 				om.tryCancelSession()
 			case ErrUnknownTopicOrPartition:
 				// let the user know *and* try redispatching - if topic-auto-create is
