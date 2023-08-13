@@ -17,12 +17,13 @@ func TestFuncAdminQuotas(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	config := NewTestConfig()
+	config := NewFunctionalTestConfig()
 	config.Version = kafkaVersion
 	adminClient, err := NewClusterAdmin(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer safeClose(t, adminClient)
 
 	// Check that we can read the quotas, and that they are empty
 	quotas, err := adminClient.DescribeClientQuotas(nil, false)
@@ -137,21 +138,22 @@ func TestFuncAdminDescribeGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	config := NewTestConfig()
+	config := NewFunctionalTestConfig()
 	config.Version = kafkaVersion
 	adminClient, err := NewClusterAdmin(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer safeClose(t, adminClient)
 
-	config1 := NewTestConfig()
+	config1 := NewFunctionalTestConfig()
 	config1.ClientID = "M1"
 	config1.Version = V2_3_0_0
 	config1.Consumer.Offsets.Initial = OffsetNewest
 	m1 := runTestFuncConsumerGroupMemberWithConfig(t, config1, group1, 100, nil, "test.4")
 	defer m1.Close()
 
-	config2 := NewTestConfig()
+	config2 := NewFunctionalTestConfig()
 	config2.ClientID = "M2"
 	config2.Version = V2_3_0_0
 	config2.Consumer.Offsets.Initial = OffsetNewest

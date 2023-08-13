@@ -207,19 +207,17 @@ func isErrNoController(err error) bool {
 // provided retryable func) up to the maximum number of tries permitted by
 // the admin client configuration
 func (ca *clusterAdmin) retryOnError(retryable func(error) bool, fn func() error) error {
-	var err error
-	for attempt := 0; attempt < ca.conf.Admin.Retry.Max; attempt++ {
-		err = fn()
-		if err == nil || !retryable(err) {
+	for attemptsRemaining := ca.conf.Admin.Retry.Max + 1; ; {
+		err := fn()
+		attemptsRemaining--
+		if err == nil || attemptsRemaining <= 0 || !retryable(err) {
 			return err
 		}
 		Logger.Printf(
 			"admin/request retrying after %dms... (%d attempts remaining)\n",
-			ca.conf.Admin.Retry.Backoff/time.Millisecond, ca.conf.Admin.Retry.Max-attempt)
+			ca.conf.Admin.Retry.Backoff/time.Millisecond, attemptsRemaining)
 		time.Sleep(ca.conf.Admin.Retry.Backoff)
-		continue
 	}
-	return err
 }
 
 func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateOnly bool) error {
@@ -240,11 +238,15 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 		Timeout:      ca.conf.Admin.Timeout,
 	}
 
-	if ca.conf.Version.IsAtLeast(V0_11_0_0) {
-		request.Version = 1
-	}
-	if ca.conf.Version.IsAtLeast(V1_0_0_0) {
+	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		// Version 3 is the same as version 2 (brokers response before throttling)
+		request.Version = 3
+	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
+		// Version 2 is the same as version 1 (response has ThrottleTime)
 		request.Version = 2
+	} else if ca.conf.Version.IsAtLeast(V0_10_2_0) {
+		// Version 1 adds validateOnly.
+		request.Version = 1
 	}
 
 	return ca.retryOnError(isErrNoController, func() error {
@@ -275,13 +277,19 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 }
 
 func (ca *clusterAdmin) DescribeTopics(topics []string) (metadata []*TopicMetadata, err error) {
-	controller, err := ca.Controller()
-	if err != nil {
-		return nil, err
-	}
-
-	request := NewMetadataRequest(ca.conf.Version, topics)
-	response, err := controller.GetMetadata(request)
+	var response *MetadataResponse
+	err = ca.retryOnError(isErrNoController, func() error {
+		controller, err := ca.Controller()
+		if err != nil {
+			return err
+		}
+		request := NewMetadataRequest(ca.conf.Version, topics)
+		response, err = controller.GetMetadata(request)
+		if isErrNoController(err) {
+			_, _ = ca.refreshController()
+		}
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -289,13 +297,20 @@ func (ca *clusterAdmin) DescribeTopics(topics []string) (metadata []*TopicMetada
 }
 
 func (ca *clusterAdmin) DescribeCluster() (brokers []*Broker, controllerID int32, err error) {
-	controller, err := ca.Controller()
-	if err != nil {
-		return nil, int32(0), err
-	}
+	var response *MetadataResponse
+	err = ca.retryOnError(isErrNoController, func() error {
+		controller, err := ca.Controller()
+		if err != nil {
+			return err
+		}
 
-	request := NewMetadataRequest(ca.conf.Version, nil)
-	response, err := controller.GetMetadata(request)
+		request := NewMetadataRequest(ca.conf.Version, nil)
+		response, err = controller.GetMetadata(request)
+		if isErrNoController(err) {
+			_, _ = ca.refreshController()
+		}
+		return err
+	})
 	if err != nil {
 		return nil, int32(0), err
 	}
@@ -413,7 +428,12 @@ func (ca *clusterAdmin) DeleteTopic(topic string) error {
 		Timeout: ca.conf.Admin.Timeout,
 	}
 
-	if ca.conf.Version.IsAtLeast(V0_11_0_0) {
+	// Versions 0, 1, 2, and 3 are the same.
+	if ca.conf.Version.IsAtLeast(V2_1_0_0) {
+		request.Version = 3
+	} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		request.Version = 2
+	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
 		request.Version = 1
 	}
 
@@ -456,6 +476,9 @@ func (ca *clusterAdmin) CreatePartitions(topic string, count int32, assignment [
 		TopicPartitions: topicPartitions,
 		Timeout:         ca.conf.Admin.Timeout,
 		ValidateOnly:    validateOnly,
+	}
+	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		request.Version = 1
 	}
 
 	return ca.retryOnError(isErrNoController, func() error {
@@ -545,13 +568,20 @@ func (ca *clusterAdmin) ListPartitionReassignments(topic string, partitions []in
 
 	request.AddBlock(topic, partitions)
 
-	b, err := ca.Controller()
-	if err != nil {
-		return nil, err
-	}
-	_ = b.Open(ca.client.Config())
+	var rsp *ListPartitionReassignmentsResponse
+	err = ca.retryOnError(isErrNoController, func() error {
+		b, err := ca.Controller()
+		if err != nil {
+			return err
+		}
+		_ = b.Open(ca.client.Config())
 
-	rsp, err := b.ListPartitionReassignments(request)
+		rsp, err = b.ListPartitionReassignments(request)
+		if isErrNoController(err) {
+			_, _ = ca.refreshController()
+		}
+		return err
+	})
 
 	if err == nil && rsp != nil {
 		return rsp.TopicStatus, nil
@@ -586,6 +616,9 @@ func (ca *clusterAdmin) DeleteRecords(topic string, partitionOffsets map[int32]i
 		request := &DeleteRecordsRequest{
 			Topics:  topics,
 			Timeout: ca.conf.Admin.Timeout,
+		}
+		if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+			request.Version = 1
 		}
 		rsp, err := broker.DeleteRecords(request)
 		if err != nil {
@@ -691,6 +724,9 @@ func (ca *clusterAdmin) AlterConfig(resourceType ConfigResourceType, name string
 	request := &AlterConfigsRequest{
 		Resources:    resources,
 		ValidateOnly: validateOnly,
+	}
+	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		request.Version = 1
 	}
 
 	var (
@@ -891,8 +927,19 @@ func (ca *clusterAdmin) DescribeConsumerGroups(groups []string) (result []*Group
 		describeReq := &DescribeGroupsRequest{
 			Groups: brokerGroups,
 		}
+
 		if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+			// Starting in version 4, the response will include group.instance.id info for members.
 			describeReq.Version = 4
+		} else if ca.conf.Version.IsAtLeast(V2_3_0_0) {
+			// Starting in version 3, authorized operations can be requested.
+			describeReq.Version = 3
+		} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+			// Version 2 is the same as version 0.
+			describeReq.Version = 2
+		} else if ca.conf.Version.IsAtLeast(V1_1_0_0) {
+			// Version 1 is the same as version 0.
+			describeReq.Version = 1
 		}
 		response, err := broker.DescribeGroups(describeReq)
 		if err != nil {
@@ -919,7 +966,22 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 			defer wg.Done()
 			_ = b.Open(conf) // Ensure that broker is opened
 
-			response, err := b.ListGroups(&ListGroupsRequest{})
+			request := &ListGroupsRequest{}
+			if ca.conf.Version.IsAtLeast(V2_6_0_0) {
+				// Version 4 adds the StatesFilter field (KIP-518).
+				request.Version = 4
+			} else if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+				// Version 3 is the first flexible version.
+				request.Version = 3
+			} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+				// Version 2 is the same as version 0.
+				request.Version = 2
+			} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
+				// Version 1 is the same as version 0.
+				request.Version = 1
+			}
+
+			response, err := b.ListGroups(request)
 			if err != nil {
 				errChan <- err
 				return
@@ -960,9 +1022,28 @@ func (ca *clusterAdmin) ListConsumerGroupOffsets(group string, topicPartitions m
 		partitions:    topicPartitions,
 	}
 
-	if ca.conf.Version.IsAtLeast(V0_10_2_0) {
+	if ca.conf.Version.IsAtLeast(V2_5_0_0) {
+		// Version 7 is adding the require stable flag.
+		request.Version = 7
+	} else if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+		// Version 6 is the first flexible version.
+		request.Version = 6
+	} else if ca.conf.Version.IsAtLeast(V2_1_0_0) {
+		// Version 3, 4, and 5 are the same as version 2.
+		request.Version = 5
+	} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		request.Version = 4
+	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
+		request.Version = 3
+	} else if ca.conf.Version.IsAtLeast(V0_10_2_0) {
+		// Starting in version 2, the request can contain a null topics array to indicate that offsets
+		// for all topics should be fetched. It also returns a top level error code
+		// for group or coordinator level errors.
 		request.Version = 2
-	} else if ca.conf.Version.IsAtLeast(V0_8_2_2) {
+	} else if ca.conf.Version.IsAtLeast(V0_8_2_0) {
+		// In version 0, the request read offsets from ZK.
+		//
+		// Starting in version 1, the broker supports fetching offsets from the internal __consumer_offsets topic.
 		request.Version = 1
 	}
 
@@ -1006,6 +1087,9 @@ func (ca *clusterAdmin) DeleteConsumerGroup(group string) error {
 	request := &DeleteGroupsRequest{
 		Groups: []string{group},
 	}
+	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+		request.Version = 1
+	}
 
 	resp, err := coordinator.DeleteGroups(request)
 	if err != nil {
@@ -1043,7 +1127,11 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 			defer wg.Done()
 			_ = b.Open(conf) // Ensure that broker is opened
 
-			response, err := b.DescribeLogDirs(&DescribeLogDirsRequest{})
+			request := &DescribeLogDirsRequest{}
+			if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+				request.Version = 1
+			}
+			response, err := b.DescribeLogDirs(request)
 			if err != nil {
 				errChan <- err
 				return
@@ -1190,6 +1278,10 @@ func (ca *clusterAdmin) AlterClientQuotas(entity []QuotaEntityComponent, op Clie
 }
 
 func (ca *clusterAdmin) RemoveMemberFromConsumerGroup(groupId string, groupInstanceIds []string) (*LeaveGroupResponse, error) {
+	if !ca.conf.Version.IsAtLeast(V2_4_0_0) {
+		return nil, ConfigurationError("Removing members from a consumer group headers requires Kafka version of at least v2.4.0")
+	}
+
 	controller, err := ca.client.Coordinator(groupId)
 	if err != nil {
 		return nil, err

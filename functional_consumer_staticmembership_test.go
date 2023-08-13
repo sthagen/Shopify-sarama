@@ -20,17 +20,15 @@ func TestFuncConsumerGroupStaticMembership_Basic(t *testing.T) {
 
 	t.Helper()
 
-	config1 := NewTestConfig()
+	config1 := NewFunctionalTestConfig()
 	config1.ClientID = "M1"
-	config1.Version = V2_3_0_0
 	config1.Consumer.Offsets.Initial = OffsetNewest
 	config1.Consumer.Group.InstanceId = "Instance1"
 	m1 := runTestFuncConsumerGroupMemberWithConfig(t, config1, groupID, 100, nil, "test.4")
 	defer m1.Close()
 
-	config2 := NewTestConfig()
+	config2 := NewFunctionalTestConfig()
 	config2.ClientID = "M2"
-	config2.Version = V2_3_0_0
 	config2.Consumer.Offsets.Initial = OffsetNewest
 	config2.Consumer.Group.InstanceId = "Instance2"
 	m2 := runTestFuncConsumerGroupMemberWithConfig(t, config2, groupID, 100, nil, "test.4")
@@ -48,6 +46,8 @@ func TestFuncConsumerGroupStaticMembership_Basic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer safeClose(t, admin)
+
 	res, err := admin.DescribeConsumerGroups([]string{groupID})
 	if err != nil {
 		t.Fatal(err)
@@ -67,24 +67,22 @@ func TestFuncConsumerGroupStaticMembership_Basic(t *testing.T) {
 }
 
 func TestFuncConsumerGroupStaticMembership_RejoinAndLeave(t *testing.T) {
-	checkKafkaVersion(t, "2.3.0")
+	checkKafkaVersion(t, "2.4.0")
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
 	groupID := testFuncConsumerGroupID(t)
 
 	t.Helper()
 
-	config1 := NewTestConfig()
+	config1 := NewFunctionalTestConfig()
 	config1.ClientID = "M1"
-	config1.Version = V2_3_0_0
 	config1.Consumer.Offsets.Initial = OffsetNewest
 	config1.Consumer.Group.InstanceId = "Instance1"
 	m1 := runTestFuncConsumerGroupMemberWithConfig(t, config1, groupID, math.MaxInt32, nil, "test.4")
 	defer m1.Close()
 
-	config2 := NewTestConfig()
+	config2 := NewFunctionalTestConfig()
 	config2.ClientID = "M2"
-	config2.Version = V2_3_0_0
 	config2.Consumer.Offsets.Initial = OffsetNewest
 	config2.Consumer.Group.InstanceId = "Instance2"
 	m2 := runTestFuncConsumerGroupMemberWithConfig(t, config2, groupID, math.MaxInt32, nil, "test.4")
@@ -97,6 +95,8 @@ func TestFuncConsumerGroupStaticMembership_RejoinAndLeave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer safeClose(t, admin)
+
 	res1, err := admin.DescribeConsumerGroups([]string{groupID})
 	if err != nil {
 		t.Fatal(err)
@@ -177,17 +177,15 @@ func TestFuncConsumerGroupStaticMembership_Fenced(t *testing.T) {
 
 	t.Helper()
 
-	config1 := NewTestConfig()
+	config1 := NewFunctionalTestConfig()
 	config1.ClientID = "M1"
-	config1.Version = V2_3_0_0
 	config1.Consumer.Offsets.Initial = OffsetNewest
 	config1.Consumer.Group.InstanceId = "Instance1"
 	m1 := runTestFuncConsumerGroupMemberWithConfig(t, config1, groupID, math.MaxInt32, nil, "test.4")
 	defer m1.Close()
 
-	config2 := NewTestConfig()
+	config2 := NewFunctionalTestConfig()
 	config2.ClientID = "M2"
-	config2.Version = V2_3_0_0
 	config2.Consumer.Offsets.Initial = OffsetNewest
 	config2.Consumer.Group.InstanceId = "Instance2"
 	m2 := runTestFuncConsumerGroupMemberWithConfig(t, config2, groupID, math.MaxInt32, nil, "test.4")
@@ -196,9 +194,8 @@ func TestFuncConsumerGroupStaticMembership_Fenced(t *testing.T) {
 	m1.WaitForState(2)
 	m2.WaitForState(2)
 
-	config3 := NewTestConfig()
+	config3 := NewFunctionalTestConfig()
 	config3.ClientID = "M3"
-	config3.Version = V2_3_0_0
 	config3.Consumer.Offsets.Initial = OffsetNewest
 	config3.Consumer.Group.InstanceId = "Instance2" // same instance id as config2
 
@@ -222,7 +219,7 @@ func TestFuncConsumerGroupStaticMembership_Fenced(t *testing.T) {
 // --------------------------------------------------------------------
 
 func testFuncConsumerGroupProduceMessage(topic string, count int) error {
-	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, NewTestConfig())
+	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, NewFunctionalTestConfig())
 	if err != nil {
 		return err
 	}

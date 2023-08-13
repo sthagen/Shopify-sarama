@@ -1,13 +1,18 @@
 package sarama
 
 import (
+	"context"
 	"errors"
 	"math"
 	"math/rand"
+	"net"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // Client is a generic Kafka client. It manages connections to one or more Kafka brokers.
@@ -132,10 +137,10 @@ const (
 )
 
 type client struct {
-	// updateMetaDataMs stores the time at which metadata was lasted updated.
+	// updateMetadataMs stores the time at which metadata was lasted updated.
 	// Note: this accessed atomically so must be the first word in the struct
 	// as per golang/go#41970
-	updateMetaDataMs int64
+	updateMetadataMs int64
 
 	conf           *Config
 	closer, closed chan none // for shutting down background metadata updater
@@ -158,7 +163,6 @@ type client struct {
 	cachedPartitionsResults map[string][maxPartitionIndex][]int32
 
 	lock sync.RWMutex // protects access to the maps that hold cluster state.
-
 }
 
 // NewClient creates a new Client. It connects to one of the given broker addresses
@@ -189,6 +193,14 @@ func NewClient(addrs []string, conf *Config) (Client, error) {
 		cachedPartitionsResults: make(map[string][maxPartitionIndex][]int32),
 		coordinators:            make(map[string]int32),
 		transactionCoordinators: make(map[string]int32),
+	}
+
+	if conf.Net.ResolveCanonicalBootstrapServers {
+		var err error
+		addrs, err = client.resolveCanonicalNames(addrs)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	client.randomizeSeedBrokers(addrs)
@@ -239,12 +251,26 @@ func (client *client) Broker(brokerID int32) (*Broker, error) {
 }
 
 func (client *client) InitProducerID() (*InitProducerIDResponse, error) {
+	// FIXME: this InitProducerID seems to only be called from client_test.go (TestInitProducerIDConnectionRefused) and has been superceded by transaction_manager.go?
 	brokerErrors := make([]error, 0)
 	for broker := client.anyBroker(); broker != nil; broker = client.anyBroker() {
-		var response *InitProducerIDResponse
-		req := &InitProducerIDRequest{}
+		request := &InitProducerIDRequest{}
 
-		response, err := broker.InitProducerID(req)
+		if client.conf.Version.IsAtLeast(V2_7_0_0) {
+			// Version 4 adds the support for new error code PRODUCER_FENCED.
+			request.Version = 4
+		} else if client.conf.Version.IsAtLeast(V2_5_0_0) {
+			// Version 3 adds ProducerId and ProducerEpoch, allowing producers to try to resume after an INVALID_PRODUCER_EPOCH error
+			request.Version = 3
+		} else if client.conf.Version.IsAtLeast(V2_4_0_0) {
+			// Version 2 is the first flexible version.
+			request.Version = 2
+		} else if client.conf.Version.IsAtLeast(V2_0_0_0) {
+			// Version 1 is the same as version 0.
+			request.Version = 1
+		}
+
+		response, err := broker.InitProducerID(request)
 		if err == nil {
 			return response, nil
 		} else {
@@ -886,9 +912,21 @@ func (client *client) getOffset(topic string, partitionID int32, time int64) (in
 	}
 
 	request := &OffsetRequest{}
-	if client.conf.Version.IsAtLeast(V0_10_1_0) {
+	if client.conf.Version.IsAtLeast(V2_1_0_0) {
+		// Version 4 adds the current leader epoch, which is used for fencing.
+		request.Version = 4
+	} else if client.conf.Version.IsAtLeast(V2_0_0_0) {
+		// Version 3 is the same as version 2.
+		request.Version = 3
+	} else if client.conf.Version.IsAtLeast(V0_11_0_0) {
+		// Version 2 adds the isolation level, which is used for transactional reads.
+		request.Version = 2
+	} else if client.conf.Version.IsAtLeast(V0_10_1_0) {
+		// Version 1 removes MaxNumOffsets.  From this version forward, only a single
+		// offset can be returned.
 		request.Version = 1
 	}
+
 	request.AddBlock(topic, partitionID, time, 1)
 
 	response, err := broker.GetAvailableOffsets(request)
@@ -975,13 +1013,14 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 				time.Sleep(backoff)
 			}
 
-			t := atomic.LoadInt64(&client.updateMetaDataMs)
-			if time.Since(time.Unix(t/1e3, 0)) < backoff {
+			t := atomic.LoadInt64(&client.updateMetadataMs)
+			if time.Since(time.UnixMilli(t)) < backoff {
 				return err
 			}
+			attemptsRemaining--
 			Logger.Printf("client/metadata retrying after %dms... (%d attempts remaining)\n", backoff/time.Millisecond, attemptsRemaining)
 
-			return client.tryRefreshMetadata(topics, attemptsRemaining-1, deadline)
+			return client.tryRefreshMetadata(topics, attemptsRemaining, deadline)
 		}
 		return err
 	}
@@ -999,10 +1038,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 
 		req := NewMetadataRequest(client.conf.Version, topics)
 		req.AllowAutoTopicCreation = allowAutoTopicCreation
-		t := atomic.LoadInt64(&client.updateMetaDataMs)
-		if !atomic.CompareAndSwapInt64(&client.updateMetaDataMs, t, time.Now().UnixNano()/int64(time.Millisecond)) {
-			return nil
-		}
+		atomic.StoreInt64(&client.updateMetadataMs, time.Now().UnixMilli())
 
 		response, err := broker.GetMetadata(req)
 		var kerror KError
@@ -1160,9 +1196,10 @@ func (client *client) findCoordinator(coordinatorKey string, coordinatorType Coo
 	retry := func(err error) (*FindCoordinatorResponse, error) {
 		if attemptsRemaining > 0 {
 			backoff := client.computeBackoff(attemptsRemaining)
+			attemptsRemaining--
 			Logger.Printf("client/coordinator retrying after %dms... (%d attempts remaining)\n", backoff/time.Millisecond, attemptsRemaining)
 			time.Sleep(backoff)
-			return client.findCoordinator(coordinatorKey, coordinatorType, attemptsRemaining-1)
+			return client.findCoordinator(coordinatorKey, coordinatorType, attemptsRemaining)
 		}
 		return nil, err
 	}
@@ -1175,8 +1212,13 @@ func (client *client) findCoordinator(coordinatorKey string, coordinatorType Coo
 		request.CoordinatorKey = coordinatorKey
 		request.CoordinatorType = coordinatorType
 
+		// Version 1 adds KeyType.
 		if client.conf.Version.IsAtLeast(V0_11_0_0) {
 			request.Version = 1
+		}
+		// Version 2 is the same as version 1.
+		if client.conf.Version.IsAtLeast(V2_0_0_0) {
+			request.Version = 2
 		}
 
 		response, err := broker.FindCoordinator(request)
@@ -1226,6 +1268,53 @@ func (client *client) findCoordinator(coordinatorKey string, coordinatorType Coo
 	Logger.Println("client/coordinator no available broker to send consumer metadata request to")
 	client.resurrectDeadBrokers()
 	return retry(Wrap(ErrOutOfBrokers, brokerErrors...))
+}
+
+func (client *client) resolveCanonicalNames(addrs []string) ([]string, error) {
+	ctx := context.Background()
+
+	dialer := client.Config().getDialer()
+	resolver := net.Resolver{
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			// dial func should only be called once, so switching within is acceptable
+			switch d := dialer.(type) {
+			case proxy.ContextDialer:
+				return d.DialContext(ctx, network, address)
+			default:
+				// we have no choice but to ignore the context
+				return d.Dial(network, address)
+			}
+		},
+	}
+
+	canonicalAddrs := make(map[string]struct{}, len(addrs)) // dedupe as we go
+	for _, addr := range addrs {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err // message includes addr
+		}
+
+		ips, err := resolver.LookupHost(ctx, host)
+		if err != nil {
+			return nil, err // message includes host
+		}
+		for _, ip := range ips {
+			ptrs, err := resolver.LookupAddr(ctx, ip)
+			if err != nil {
+				return nil, err // message includes ip
+			}
+
+			// unlike the Java client, we do not further check that PTRs resolve
+			ptr := strings.TrimSuffix(ptrs[0], ".") // trailing dot breaks GSSAPI
+			canonicalAddrs[net.JoinHostPort(ptr, port)] = struct{}{}
+		}
+	}
+
+	addrs = make([]string, 0, len(canonicalAddrs))
+	for addr := range canonicalAddrs {
+		addrs = append(addrs, addr)
+	}
+	return addrs, nil
 }
 
 // nopCloserClient embeds an existing Client, but disables

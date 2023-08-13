@@ -41,7 +41,10 @@ func TestClusterAdminInvalidController(t *testing.T) {
 
 	config := NewTestConfig()
 	config.Version = V1_0_0_0
-	_, err := NewClusterAdmin([]string{seedBroker.Addr()}, config)
+	admin, err := NewClusterAdmin([]string{seedBroker.Addr()}, config)
+	if admin != nil {
+		defer safeClose(t, admin)
+	}
 	if err == nil {
 		t.Fatal(errors.New("controller not set still cluster admin was created"))
 	}
@@ -237,6 +240,35 @@ func TestClusterAdminDeleteEmptyTopic(t *testing.T) {
 
 	err = admin.DeleteTopic("")
 	if !errors.Is(err, ErrInvalidTopic) {
+		t.Fatal(err)
+	}
+
+	err = admin.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClusterAdminDeleteTopicError(t *testing.T) {
+	seedBroker := NewMockBroker(t, 1)
+	defer seedBroker.Close()
+
+	seedBroker.SetHandlerByMap(map[string]MockResponse{
+		"MetadataRequest": NewMockMetadataResponse(t).
+			SetController(seedBroker.BrokerID()).
+			SetBroker(seedBroker.Addr(), seedBroker.BrokerID()),
+		"DeleteTopicsRequest": NewMockDeleteTopicsResponse(t).SetError(ErrTopicDeletionDisabled),
+	})
+
+	config := NewTestConfig()
+	config.Version = V0_10_2_0
+	admin, err := NewClusterAdmin([]string{seedBroker.Addr()}, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = admin.DeleteTopic("my_topic")
+	if !errors.Is(err, ErrTopicDeletionDisabled) {
 		t.Fatal(err)
 	}
 
@@ -1765,6 +1797,7 @@ func TestDescribeLogDirsUnknownBroker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer safeClose(t, admin)
 
 	type result struct {
 		metadata map[int32][]DescribeLogDirsResponseDirMetadata
@@ -1789,4 +1822,74 @@ func TestDescribeLogDirsUnknownBroker(t *testing.T) {
 			t.Fatalf("Expected no error, got %v", returned.err)
 		}
 	}
+}
+
+func Test_retryOnError(t *testing.T) {
+	testBackoffTime := 100 * time.Millisecond
+	config := NewTestConfig()
+	config.Version = V1_0_0_0
+	config.Admin.Retry.Max = 3
+	config.Admin.Retry.Backoff = testBackoffTime
+
+	admin := &clusterAdmin{conf: config}
+
+	t.Run("immediate success", func(t *testing.T) {
+		startTime := time.Now()
+		attempts := 0
+		err := admin.retryOnError(
+			func(error) bool { return true },
+			func() error {
+				attempts++
+				return nil
+			})
+		if err != nil {
+			t.Fatalf("expected no error but was %v", err)
+		}
+		if attempts != 1 {
+			t.Fatalf("expected 1 attempt to have been made but was %d", attempts)
+		}
+		if time.Since(startTime) >= testBackoffTime {
+			t.Fatalf("single attempt should take less than backoff time")
+		}
+	})
+
+	t.Run("immediate failure", func(t *testing.T) {
+		startTime := time.Now()
+		attempts := 0
+		err := admin.retryOnError(
+			func(error) bool { return false },
+			func() error {
+				attempts++
+				return errors.New("mock error")
+			})
+		if err == nil {
+			t.Fatalf("expected error but was nil")
+		}
+		if attempts != 1 {
+			t.Fatalf("expected 1 attempt to have been made but was %d", attempts)
+		}
+		if time.Since(startTime) >= testBackoffTime {
+			t.Fatalf("single attempt should take less than backoff time")
+		}
+	})
+
+	t.Run("failing all attempts", func(t *testing.T) {
+		startTime := time.Now()
+		attempts := 0
+		err := admin.retryOnError(
+			func(error) bool { return true },
+			func() error {
+				attempts++
+				return errors.New("mock error")
+			})
+		if err == nil {
+			t.Errorf("expected error but was nil")
+		}
+		if attempts != 4 {
+			t.Errorf("expected 4 attempts to have been made but was %d", attempts)
+		}
+		if time.Since(startTime) >= 4*testBackoffTime {
+			t.Errorf("attempt+sleep+retry+sleep+retry+sleep+retry should take less than 4 * backoff time")
+		}
+	})
 }

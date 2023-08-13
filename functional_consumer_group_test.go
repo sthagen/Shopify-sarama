@@ -135,6 +135,50 @@ func TestFuncConsumerGroupExcessConsumers(t *testing.T) {
 	m5.AssertCleanShutdown()
 }
 
+func TestFuncConsumerGroupRebalanceAfterAddingPartitions(t *testing.T) {
+	checkKafkaVersion(t, "0.10.2")
+	setupFunctionalTest(t)
+	defer teardownFunctionalTest(t)
+
+	config := NewFunctionalTestConfig()
+	admin, err := NewClusterAdmin(FunctionalTestEnv.KafkaBrokerAddrs, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = admin.Close()
+	}()
+
+	groupID := testFuncConsumerGroupID(t)
+
+	// start M1
+	m1 := runTestFuncConsumerGroupMember(t, groupID, "M1", 0, nil, "test.1")
+	defer m1.Stop()
+	m1.WaitForClaims(map[string]int{"test.1": 1})
+	m1.WaitForHandlers(1)
+
+	// start M2
+	m2 := runTestFuncConsumerGroupMember(t, groupID, "M2", 0, nil, "test.1_to_2")
+	defer m2.Stop()
+	m2.WaitForClaims(map[string]int{"test.1_to_2": 1})
+	m1.WaitForHandlers(1)
+
+	// add a new partition to topic "test.1_to_2"
+	err = admin.CreatePartitions("test.1_to_2", 2, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// assert that claims are shared among both members
+	m2.WaitForClaims(map[string]int{"test.1_to_2": 2})
+	m2.WaitForHandlers(2)
+	m1.WaitForClaims(map[string]int{"test.1": 1})
+	m1.WaitForHandlers(1)
+
+	m1.AssertCleanShutdown()
+	m2.AssertCleanShutdown()
+}
+
 func TestFuncConsumerGroupFuzzy(t *testing.T) {
 	checkKafkaVersion(t, "0.10.2")
 	setupFunctionalTest(t)
@@ -198,10 +242,7 @@ func TestFuncConsumerGroupOffsetDeletion(t *testing.T) {
 	checkKafkaVersion(t, "2.4.0")
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
-	// create a client with 2.4.0 version as it is the minimal version
-	// that supports DeleteOffsets request
-	config := NewTestConfig()
-	config.Version = V2_4_0_0
+	config := NewFunctionalTestConfig()
 	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	defer safeClose(t, client)
 	if err != nil {
@@ -270,7 +311,7 @@ func markOffset(t *testing.T, offsetMgr OffsetManager, topic string, partition i
 }
 
 func testFuncConsumerGroupFuzzySeed(topic string) error {
-	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, NewTestConfig())
+	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, NewFunctionalTestConfig())
 	if err != nil {
 		return err
 	}
@@ -354,12 +395,13 @@ type testFuncConsumerGroupMember struct {
 }
 
 func defaultConfig(clientID string) *Config {
-	config := NewConfig()
+	config := NewFunctionalTestConfig()
 	config.ClientID = clientID
-	config.Version = V0_10_2_0
 	config.Consumer.Return.Errors = true
 	config.Consumer.Offsets.Initial = OffsetOldest
 	config.Consumer.Group.Rebalance.Timeout = 10 * time.Second
+	config.Metadata.Full = false
+	config.Metadata.RefreshFrequency = 5 * time.Second
 	return config
 }
 

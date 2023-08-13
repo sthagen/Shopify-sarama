@@ -13,8 +13,10 @@ import (
 	"time"
 )
 
-var testMsg = StringEncoder("Foo")
-var testKey = StringEncoder("Bar")
+var (
+	testMsg = StringEncoder("Foo")
+	testKey = StringEncoder("Bar")
+)
 
 // If a particular offset is provided then messages are consumed starting from
 // that offset.
@@ -632,7 +634,7 @@ func TestConsumerExtraOffsets(t *testing.T) {
 	legacyFetchResponse.AddMessage("my_topic", 0, nil, testMsg, 2)
 	legacyFetchResponse.AddMessage("my_topic", 0, nil, testMsg, 3)
 	legacyFetchResponse.AddMessage("my_topic", 0, nil, testMsg, 4)
-	newFetchResponse := &FetchResponse{Version: 4}
+	newFetchResponse := &FetchResponse{Version: 5}
 	newFetchResponse.AddRecord("my_topic", 0, nil, testMsg, 1)
 	newFetchResponse.AddRecord("my_topic", 0, nil, testMsg, 2)
 	newFetchResponse.AddRecord("my_topic", 0, nil, testMsg, 3)
@@ -642,7 +644,7 @@ func TestConsumerExtraOffsets(t *testing.T) {
 	for _, fetchResponse1 := range []*FetchResponse{legacyFetchResponse, newFetchResponse} {
 		cfg := NewTestConfig()
 		cfg.Consumer.Return.Errors = true
-		if fetchResponse1.Version >= 4 {
+		if fetchResponse1.Version >= 5 {
 			cfg.Version = V0_11_0_0
 		}
 
@@ -698,10 +700,10 @@ func TestConsumerExtraOffsets(t *testing.T) {
 // more messages if higher offset was requested.
 func TestConsumerReceivingFetchResponseWithTooOldRecords(t *testing.T) {
 	// Given
-	fetchResponse1 := &FetchResponse{Version: 4}
+	fetchResponse1 := &FetchResponse{Version: 5}
 	fetchResponse1.AddRecord("my_topic", 0, nil, testMsg, 1)
 
-	fetchResponse2 := &FetchResponse{Version: 4}
+	fetchResponse2 := &FetchResponse{Version: 5}
 	fetchResponse2.AddRecord("my_topic", 0, nil, testMsg, 1000000)
 
 	cfg := NewTestConfig()
@@ -745,7 +747,7 @@ func TestConsumerReceivingFetchResponseWithTooOldRecords(t *testing.T) {
 
 func TestConsumeMessageWithNewerFetchAPIVersion(t *testing.T) {
 	// Given
-	fetchResponse1 := &FetchResponse{Version: 4}
+	fetchResponse1 := &FetchResponse{Version: 5}
 	fetchResponse1.AddMessage("my_topic", 0, nil, testMsg, 1)
 	fetchResponse1.AddMessage("my_topic", 0, nil, testMsg, 2)
 
@@ -858,7 +860,7 @@ func TestConsumeMessagesFromReadReplica(t *testing.T) {
 	block4 := fetchResponse4.GetBlock("my_topic", 0)
 	block4.PreferredReadReplica = -1
 
-	cfg := NewConfig()
+	cfg := NewTestConfig()
 	cfg.Version = V2_3_0_0
 	cfg.RackID = "consumer_rack"
 
@@ -923,7 +925,7 @@ func TestConsumeMessagesFromReadReplicaLeaderFallback(t *testing.T) {
 	block2 := fetchResponse2.GetBlock("my_topic", 0)
 	block2.PreferredReadReplica = -1
 
-	cfg := NewConfig()
+	cfg := NewTestConfig()
 	cfg.Version = V2_3_0_0
 	cfg.RackID = "consumer_rack"
 
@@ -979,7 +981,7 @@ func TestConsumeMessagesFromReadReplicaErrorReplicaNotAvailable(t *testing.T) {
 	fetchResponse4.AddMessage("my_topic", 0, nil, testMsg, 3)
 	fetchResponse4.AddMessage("my_topic", 0, nil, testMsg, 4)
 
-	cfg := NewConfig()
+	cfg := NewTestConfig()
 	cfg.Version = V2_3_0_0
 	cfg.RackID = "consumer_rack"
 
@@ -1049,7 +1051,7 @@ func TestConsumeMessagesFromReadReplicaErrorUnknown(t *testing.T) {
 	fetchResponse4.AddMessage("my_topic", 0, nil, testMsg, 3)
 	fetchResponse4.AddMessage("my_topic", 0, nil, testMsg, 4)
 
-	cfg := NewConfig()
+	cfg := NewTestConfig()
 	cfg.Version = V2_3_0_0
 	cfg.RackID = "consumer_rack"
 
@@ -1107,9 +1109,10 @@ func TestConsumeMessagesFromReadReplicaErrorUnknown(t *testing.T) {
 //
 // See https://github.com/IBM/sarama/issues/1927
 func TestConsumeMessagesTrackLeader(t *testing.T) {
-	cfg := NewConfig()
+	cfg := NewTestConfig()
 	cfg.ClientID = t.Name()
 	cfg.Metadata.RefreshFrequency = time.Millisecond * 50
+	cfg.Consumer.Retry.Backoff = 0
 	cfg.Net.MaxOpenRequests = 1
 	cfg.Version = V2_1_0_0
 
@@ -1220,7 +1223,7 @@ func TestConsumerNonSequentialOffsets(t *testing.T) {
 	legacyFetchResponse.AddMessage("my_topic", 0, nil, testMsg, 5)
 	legacyFetchResponse.AddMessage("my_topic", 0, nil, testMsg, 7)
 	legacyFetchResponse.AddMessage("my_topic", 0, nil, testMsg, 11)
-	newFetchResponse := &FetchResponse{Version: 4}
+	newFetchResponse := &FetchResponse{Version: 5}
 	newFetchResponse.AddRecord("my_topic", 0, nil, testMsg, 5)
 	newFetchResponse.AddRecord("my_topic", 0, nil, testMsg, 7)
 	newFetchResponse.AddRecord("my_topic", 0, nil, testMsg, 11)
@@ -1735,7 +1738,7 @@ func TestConsumerTimestamps(t *testing.T) {
 		cfg.Version = d.kversion
 		switch {
 		case d.kversion.IsAtLeast(V0_11_0_0):
-			fr = &FetchResponse{Version: 4, LogAppendTime: d.logAppendTime, Timestamp: now}
+			fr = &FetchResponse{Version: 5, LogAppendTime: d.logAppendTime, Timestamp: now}
 			for _, m := range d.messages {
 				fr.AddRecordWithTimestamp("my_topic", 0, m.key, testMsg, m.offset, m.timestamp)
 			}
@@ -1806,7 +1809,7 @@ func TestExcludeUncommitted(t *testing.T) {
 	broker0 := NewMockBroker(t, 0)
 
 	fetchResponse := &FetchResponse{
-		Version: 4,
+		Version: 5,
 		Blocks: map[string]map[int32]*FetchResponseBlock{"my_topic": {0: {
 			AbortedTransactions: []*AbortedTransaction{{ProducerID: 7, FirstOffset: 1235}},
 		}}},
@@ -1994,7 +1997,7 @@ func Test_partitionConsumer_parseResponseEmptyBatch(t *testing.T) {
 		broker: &brokerConsumer{
 			broker: &Broker{},
 		},
-		conf:      NewConfig(),
+		conf:      NewTestConfig(),
 		topic:     "my_topic",
 		partition: 0,
 	}
