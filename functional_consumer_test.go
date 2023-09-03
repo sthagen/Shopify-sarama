@@ -19,7 +19,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/rcrowley/go-metrics"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/require"
 )
 
 func TestFuncConsumerOffsetOutOfRange(t *testing.T) {
@@ -46,7 +46,10 @@ func TestConsumerHighWaterMarkOffset(t *testing.T) {
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
 
-	p, err := NewSyncProducer(FunctionalTestEnv.KafkaBrokerAddrs, nil)
+	config := NewFunctionalTestConfig()
+	config.Producer.Return.Successes = true
+
+	p, err := NewSyncProducer(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +60,7 @@ func TestConsumerHighWaterMarkOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := NewConsumer(FunctionalTestEnv.KafkaBrokerAddrs, NewFunctionalTestConfig())
+	c, err := NewConsumer(FunctionalTestEnv.KafkaBrokerAddrs, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +130,7 @@ func TestVersionMatrixLZ4(t *testing.T) {
 
 // Support for zstd codec was introduced in v2.1.0.0
 func TestVersionMatrixZstd(t *testing.T) {
+	checkKafkaVersion(t, "2.1.0")
 	metrics.UseNilMetrics = true // disable Sarama's go-metrics library
 	t.Cleanup(func() {
 		metrics.UseNilMetrics = false
@@ -294,13 +298,13 @@ func TestReadOnlyAndAllCommittedMessages(t *testing.T) {
 	defer consumer.Close()
 
 	pc, err := consumer.ConsumePartition(uncommittedTopic, 0, OffsetOldest)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	msgChannel := pc.Messages()
 	for i := 1; i <= 6; i++ {
 		msg := <-msgChannel
 		t.Logf("Received %s from %s-%d at offset %d", msg.Value, msg.Topic, msg.Partition, msg.Offset)
-		require.Equal(t, fmt.Sprintf("Committed %v", i), string(msg.Value))
+		assert.Equal(t, fmt.Sprintf("Committed %v", i), string(msg.Value))
 	}
 }
 
@@ -308,8 +312,6 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 	checkKafkaVersion(t, "1.1.0")
 	setupFunctionalTest(t)
 	defer teardownFunctionalTest(t)
-
-	require := require.New(t)
 
 	const topic = "test_consumer_group_rebalance_test_topic"
 	const msgQty = 50
@@ -324,10 +326,10 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 	config.ChannelBufferSize = 2 * msgQty
 
 	client, err := NewClient(FunctionalTestEnv.KafkaBrokerAddrs, config)
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	admin, err := NewClusterAdminFromClient(client)
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	cgName := "test_consumer_group_rebalance_consumer_group"
 
@@ -353,7 +355,7 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 		}
 		break
 	}
-	require.NoError(err)
+	assert.NoError(t, err)
 	defer func() {
 		_ = admin.DeleteTopic(topic)
 	}()
@@ -361,7 +363,7 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 	var wg sync.WaitGroup
 
 	consumer, err := NewConsumerFromClient(client)
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	ch := make(chan string, msgQty)
 	for i := 0; i < partitionsQty; i++ {
@@ -371,7 +373,7 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 			defer wg.Done()
 
 			pConsumer, err := consumer.ConsumePartition(topic, int32(i), OffsetOldest)
-			require.NoError(err)
+			assert.NoError(t, err)
 			defer pConsumer.Close()
 
 			for {
@@ -390,7 +392,7 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 	}
 
 	producer, err := NewSyncProducerFromClient(client)
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	for i := 0; i < msgQty; i++ {
 		msg := &ProducerMessage{
@@ -398,7 +400,7 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 			Value: StringEncoder(strconv.FormatInt(int64(i), 10)),
 		}
 		_, _, err := producer.SendMessage(msg)
-		require.NoError(err)
+		assert.NoError(t, err)
 	}
 
 	var received []string
@@ -416,16 +418,16 @@ func TestConsumerGroupDeadlock(t *testing.T) {
 
 	cancel()
 
-	require.Equal(msgQty, len(received))
+	assert.Equal(t, msgQty, len(received))
 
 	err = producer.Close()
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	err = consumer.Close()
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	err = client.Close()
-	require.NoError(err)
+	assert.NoError(t, err)
 
 	wg.Wait()
 }
@@ -533,7 +535,7 @@ func produceMsgs(t *testing.T, clientVersions []KafkaVersion, codecs []Compressi
 	sort.Slice(producedMessages, func(i, j int) bool {
 		return producedMessages[i].Offset < producedMessages[j].Offset
 	})
-	require.NotEmpty(t, producedMessages, "should have produced >0 messages")
+	assert.NotEmpty(t, producedMessages, "should have produced >0 messages")
 	t.Logf("*** Total produced %d, firstOffset=%d, lastOffset=%d\n",
 		len(producedMessages), producedMessages[0].Offset, producedMessages[len(producedMessages)-1].Offset)
 	return producedMessages
