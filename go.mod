@@ -4,14 +4,14 @@ go 1.19
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/eapache/go-resiliency v1.5.0
+	github.com/eapache/go-resiliency v1.6.0
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3
 	github.com/eapache/queue v1.1.0
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jcmturner/gofork v1.7.6
 	github.com/jcmturner/gokrb5/v8 v8.4.4
-	github.com/klauspost/compress v1.17.6
+	github.com/klauspost/compress v1.17.7
 	github.com/pierrec/lz4/v4 v4.1.21
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	github.com/stretchr/testify v1.8.4
