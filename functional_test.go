@@ -98,13 +98,13 @@ func NewFunctionalTestConfig() *Config {
 	config := NewConfig()
 	// config.Consumer.Retry.Backoff = 0
 	// config.Producer.Retry.Backoff = 0
-	config.Version = MinVersion
-	version, err := ParseKafkaVersion(os.Getenv("KAFKA_VERSION"))
-	if err != nil {
-		config.Version = DefaultVersion
-	} else {
-		config.Version = version
-	}
+
+	// Always use the maximum Sarama-supported API versions.
+	config.Version = MaxVersion
+	// Enable API versions negotiation with brokers. This will reduce the maximum
+	// API versions Sarama uses to never exceed the broker's supported versions.
+	config.ApiVersionsRequest = true
+
 	return config
 }
 
@@ -387,7 +387,7 @@ func prepareTestTopics(ctx context.Context, env *testEnvironment) error {
 
 	// now create the topics empty
 	{
-		request := NewCreateTopicsRequest(config.Version, testTopicDetails, time.Minute)
+		request := NewCreateTopicsRequest(config.Version, testTopicDetails, time.Minute, false)
 		createRes, err := controller.CreateTopics(request)
 		if err != nil {
 			return fmt.Errorf("failed to create test topics: %w", err)
@@ -477,7 +477,6 @@ func ensureFullyReplicated(t testing.TB, timeout time.Duration, retry time.Durat
 	config.Metadata.Retry.Max = 5
 	config.Metadata.Retry.Backoff = 10 * time.Second
 	config.ClientID = "sarama-ensureFullyReplicated"
-	config.ApiVersionsRequest = false
 
 	var testTopicNames []string
 	for topic := range testTopicDetails {
