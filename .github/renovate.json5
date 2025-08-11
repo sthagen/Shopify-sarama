@@ -2,7 +2,6 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: [
     "config:best-practices",
-    "enableVulnerabilityAlertsWithLabel(security)",
     "customManagers:dockerfileVersions",
     "customManagers:githubActionsVersions",
     "customManagers:makefileVersions",
@@ -30,11 +29,15 @@
   digest: {
     addLabels: ["bump/digest"],
   },
+  vulnerabilityAlerts: {
+    enabled: true,
+    labels: ["security"],
+  },
   packageRules: [
     {
       description: "Update Docker and Docker Compose dependencies daily at 9:00 PM UTC, grouped into a single PR",
       matchManagers: ["dockerfile", "docker-compose"],
-      schedule: ["every day at 9:00pm"],
+      schedule: ["* 21 * * *"],
       commitMessagePrefix: "chore(ci): ",
       groupName: "docker dependencies",
       addLabels: ["docker", "ignore-for-release"],
@@ -42,7 +45,7 @@
     {
       description: "Update GitHub Actions weekly, grouped into a single PR for actions/* packages",
       matchManagers: ["github-actions"],
-      schedule: ["every week"],
+      schedule: ["* 0 * * 0"],
       commitMessagePrefix: "chore(ci): ",
       groupName: "actions",
       matchPackageNames: ["actions/*", "github/codeql-action"],
@@ -52,22 +55,25 @@
     {
       description: "Update Go modules daily at 3:00 PM UTC",
       matchManagers: ["gomod"],
-      matchPaths: ["/**"],
-      schedule: ["every day at 3:00pm"],
+      matchFileNames: ["/**"],
+      schedule: ["* 15 * * *"],
     },
     {
       description: "Group OpenTelemetry Go dependencies into a single PR",
       matchManagers: ["gomod"],
-      matchPackagePatterns: ["go.opentelemetry.io/otel/*"],
       groupName: "otel",
+      matchPackageNames: [
+        "go.opentelemetry.io/otel",
+        "go.opentelemetry.io/otel/*",
+      ],
     },
     {
       description: "Group golang.org/x Go dependencies into a single PR",
       matchManagers: ["gomod"],
-      matchPackagePatterns: ["golang.org/x/*"],
       groupName: "golang-x",
       matchDepTypes: ["direct", "indirect"],
       enabled: true,
+      matchPackageNames: ["golang.org/x/*"],
     },
   ],
 }

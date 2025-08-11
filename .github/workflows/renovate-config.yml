@@ -1,0 +1,21 @@
+name: renovate-config-validator
+
+on:
+  pull_request:
+    paths:
+      - '.github/renovate.json5'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          sparse-checkout: |
+            .github/renovate.json5
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - run: npx --package=renovate@latest -- renovate-config-validator
