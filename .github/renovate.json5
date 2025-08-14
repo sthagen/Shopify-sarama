@@ -75,5 +75,22 @@
       enabled: true,
       matchPackageNames: ["golang.org/x/*"],
     },
+    {
+      description: "Pin ubi-minimal docker image to major.minor tags only",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["registry.access.redhat.com/ubi9/ubi-minimal"],
+      versioning: "regex:^(?<major>\\d+)\\.(?<minor>\\d+)$",
+    },
+    {
+      description: "Pin zookeeper docker image to 3.7.x",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["docker.io/library/zookeeper"],
+      allowedVersions: "< 3.8",
+    },
+    {
+      description: "Do not pin digests in docker-compose files",
+      matchManagers: ["docker-compose"],
+      pinDigests: false,
+    },
   ],
 }
