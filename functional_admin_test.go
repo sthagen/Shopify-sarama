@@ -4,9 +4,12 @@ package sarama
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFuncAdminQuotas(t *testing.T) {
@@ -188,6 +191,48 @@ func TestFuncAdminDescribeGroups(t *testing.T) {
 	m2.AssertCleanShutdown()
 }
 
+func TestFuncAdminListConsumerGroups(t *testing.T) {
+	setupFunctionalTest(t)
+	defer teardownFunctionalTest(t)
+
+	group1 := testFuncConsumerGroupID(t)
+	group2 := testFuncConsumerGroupID(t)
+
+	config := NewFunctionalTestConfig()
+	adminClient, err := NewClusterAdmin(FunctionalTestEnv.KafkaBrokerAddrs, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer safeClose(t, adminClient)
+
+	config1 := NewFunctionalTestConfig()
+	config1.ClientID = "M1"
+	config1.Consumer.Offsets.Initial = OffsetNewest
+	m1 := runTestFuncConsumerGroupMemberWithConfig(t, config1, group1, 100, nil, "test.4")
+	defer m1.Close()
+
+	config2 := NewFunctionalTestConfig()
+	config2.ClientID = "M2"
+	config2.Consumer.Offsets.Initial = OffsetNewest
+	config2.Consumer.Group.InstanceId = "Instance2"
+	m2 := runTestFuncConsumerGroupMemberWithConfig(t, config2, group2, 100, nil, "test.4")
+	defer m2.Close()
+
+	m1.WaitForState(2)
+	m2.WaitForState(2)
+
+	res, err := adminClient.ListConsumerGroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.GreaterOrEqual(t, len(res), 2)
+	assert.Contains(t, slices.Collect(maps.Keys(res)), group1)
+	assert.Contains(t, slices.Collect(maps.Keys(res)), group2)
+
+	m1.AssertCleanShutdown()
+	m2.AssertCleanShutdown()
+}
+
 func TestFuncAdminListConsumerGroupOffsets(t *testing.T) {
 	checkKafkaVersion(t, "0.8.2.0")
 	setupFunctionalTest(t)
@@ -259,4 +304,46 @@ func TestFuncAdminListConsumerGroupOffsets(t *testing.T) {
 	}
 
 	t.Logf("coordinator broker %d", coordinator.id)
+}
+
+func TestFuncAdminDescribeLogDirs(t *testing.T) {
+	checkKafkaVersion(t, "2.0.0.0")
+	setupFunctionalTest(t)
+	defer teardownFunctionalTest(t)
+
+	kafkaVersion, err := ParseKafkaVersion(FunctionalTestEnv.KafkaVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := NewFunctionalTestConfig()
+	adminClient, err := NewClusterAdmin(FunctionalTestEnv.KafkaBrokerAddrs, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer safeClose(t, adminClient)
+
+	brokerIDs := make([]int32, len(FunctionalTestEnv.KafkaBrokerAddrs))
+	for i := range brokerIDs {
+		brokerIDs[i] = int32(i + 1)
+	}
+
+	res, err := adminClient.DescribeLogDirs(brokerIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != len(FunctionalTestEnv.KafkaBrokerAddrs) {
+		t.Errorf("should have %d broker replies, got %v\n", len(FunctionalTestEnv.KafkaBrokerAddrs), len(res))
+	}
+
+	for _, resp := range res {
+		for _, logDir := range resp {
+			assert.Equal(t, logDir.ErrorCode, ErrNoError)
+			// assert that total bytes and usable bytes were returned for kafka 3.3 and newer
+			if kafkaVersion.IsAtLeast(V3_3_0_0) {
+				assert.NotZero(t, logDir.TotalBytes)
+				assert.NotZero(t, logDir.UsableBytes)
+			}
+		}
+	}
 }
