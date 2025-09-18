@@ -242,7 +242,7 @@ func (b *Broker) Open(conf *Config) error {
 			conf.Net.SASL.Version = SASLHandshakeV1
 		}
 
-		useSaslV0 := conf.Net.SASL.Version == SASLHandshakeV0 || conf.Net.SASL.Mechanism == SASLTypeGSSAPI
+		useSaslV0 := conf.Net.SASL.Version == SASLHandshakeV0
 		if conf.Net.SASL.Enable && useSaslV0 {
 			b.connErr = b.authenticateViaSASLv0()
 
@@ -1379,6 +1379,12 @@ func (b *Broker) authenticateViaSASLv1() error {
 	}
 
 	switch b.conf.Net.SASL.Mechanism {
+	case SASLTypeGSSAPI:
+		b.kerberosAuthenticator.Config = &b.conf.Net.SASL.GSSAPI
+		if b.kerberosAuthenticator.NewKerberosClientFunc == nil {
+			b.kerberosAuthenticator.NewKerberosClientFunc = NewKerberosClient
+		}
+		return b.kerberosAuthenticator.AuthorizeV2(b, authSendReceiver)
 	case SASLTypeOAuth:
 		provider := b.conf.Net.SASL.TokenProvider
 		return b.sendAndReceiveSASLOAuth(authSendReceiver, provider)
@@ -1664,7 +1670,7 @@ func buildClientFirstMessage(token *AccessToken) ([]byte, error) {
 		ext = "\x01" + mapToString(token.Extensions, "=", "\x01")
 	}
 
-	resp := []byte(fmt.Sprintf("n,,\x01auth=Bearer %s%s\x01\x01", token.Token, ext))
+	resp := fmt.Appendf(nil, "n,,\x01auth=Bearer %s%s\x01\x01", token.Token, ext)
 
 	return resp, nil
 }

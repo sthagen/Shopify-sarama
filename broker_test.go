@@ -666,7 +666,7 @@ func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
 		},
 		{
 			name:  "Kerberos client creation fails",
-			error: errors.New("configuration file could not be opened: krb5.conf open krb5.conf: no such file or directory"),
+			error: errors.New("configuration file could not be opened: testdata/krb5.conf open testdata/krb5.conf: no such file or directory"),
 		},
 		{
 			name:               "Bad server response, unmarshall key error",
@@ -701,10 +701,11 @@ func TestGSSAPIKerberosAuth_Authorize(t *testing.T) {
 			broker.requestsInFlight = metrics.NilCounter{}
 
 			conf := NewTestConfig()
+			conf.Net.SASL.Version = SASLHandshakeV0
 			conf.Net.SASL.Mechanism = SASLTypeGSSAPI
 			conf.Net.SASL.Enable = true
 			conf.Net.SASL.GSSAPI.ServiceName = "kafka"
-			conf.Net.SASL.GSSAPI.KerberosConfigPath = "krb5.conf"
+			conf.Net.SASL.GSSAPI.KerberosConfigPath = "testdata/krb5.conf"
 			conf.Net.SASL.GSSAPI.Realm = "EXAMPLE.COM"
 			conf.Net.SASL.GSSAPI.Username = "kafka"
 			conf.Net.SASL.GSSAPI.Password = "kafka"
@@ -1407,7 +1408,7 @@ func BenchmarkBroker_Open(b *testing.B) {
 	metrics.UseNilMetrics = false
 	conf := NewTestConfig()
 	conf.Version = V1_0_0_0
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := broker.Open(conf)
 		if err != nil {
 			b.Fatal(err)
@@ -1424,7 +1425,7 @@ func BenchmarkBroker_No_Metrics_Open(b *testing.B) {
 	metrics.UseNilMetrics = true
 	conf := NewTestConfig()
 	conf.Version = V1_0_0_0
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := broker.Open(conf)
 		if err != nil {
 			b.Fatal(err)
