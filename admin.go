@@ -249,8 +249,9 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 		return errors.New("you must specify topic details")
 	}
 
-	topicDetails := make(map[string]*TopicDetail)
-	topicDetails[topic] = detail
+	topicDetails := map[string]*TopicDetail{
+		topic: detail,
+	}
 
 	request := NewCreateTopicsRequest(
 		ca.conf.Version,
@@ -366,7 +367,7 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 		return nil, err
 	}
 
-	topicsDetailsMap := make(map[string]TopicDetail)
+	topicsDetailsMap := make(map[string]TopicDetail, len(metadataResp.Topics))
 
 	var describeConfigsResources []*ConfigResource
 
@@ -375,7 +376,7 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 			NumPartitions: int32(len(topic.Partitions)),
 		}
 		if len(topic.Partitions) > 0 {
-			topicDetails.ReplicaAssignment = map[int32][]int32{}
+			topicDetails.ReplicaAssignment = make(map[int32][]int32, len(topic.Partitions))
 			for _, partition := range topic.Partitions {
 				topicDetails.ReplicaAssignment[partition.ID] = partition.Replicas
 			}
@@ -479,8 +480,12 @@ func (ca *clusterAdmin) CreatePartitions(topic string, count int32, assignment [
 		return ErrInvalidTopic
 	}
 
-	topicPartitions := make(map[string]*TopicPartition)
-	topicPartitions[topic] = &TopicPartition{Count: count, Assignment: assignment}
+	topicPartitions := map[string]*TopicPartition{
+		topic: {
+			Count:      count,
+			Assignment: assignment,
+		},
+	}
 
 	request := &CreatePartitionsRequest{
 		TopicPartitions: topicPartitions,
@@ -615,13 +620,14 @@ func (ca *clusterAdmin) DeleteRecords(topic string, partitionOffsets map[int32]i
 		partitionPerBroker[broker] = append(partitionPerBroker[broker], partition)
 	}
 	for broker, partitions := range partitionPerBroker {
-		topics := make(map[string]*DeleteRecordsRequestTopic)
-		recordsToDelete := make(map[int32]int64)
+		recordsToDelete := make(map[int32]int64, len(partitions))
 		for _, p := range partitions {
 			recordsToDelete[p] = partitionOffsets[p]
 		}
-		topics[topic] = &DeleteRecordsRequestTopic{
-			PartitionOffsets: recordsToDelete,
+		topics := map[string]*DeleteRecordsRequestTopic{
+			topic: {
+				PartitionOffsets: recordsToDelete,
+			},
 		}
 		request := &DeleteRecordsRequest{
 			Topics:  topics,
@@ -1032,10 +1038,7 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 				return
 			}
 
-			groups := make(map[string]string)
-			maps.Copy(groups, response.Groups)
-
-			groupMaps <- groups
+			groupMaps <- maps.Clone(response.Groups)
 		}(b, ca.conf)
 	}
 
@@ -1204,7 +1207,7 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 	close(logDirsResults)
 	close(errChan)
 
-	allLogDirs = make(map[int32][]DescribeLogDirsResponseDirMetadata)
+	allLogDirs = make(map[int32][]DescribeLogDirsResponseDirMetadata, len(brokerIds))
 	for logDirsResult := range logDirsResults {
 		allLogDirs[logDirsResult.id] = logDirsResult.logdirs
 	}
