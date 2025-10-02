@@ -54,22 +54,26 @@ type UserScramCredentialsResponseInfo struct {
 func (r *DescribeUserScramCredentialsResponse) encode(pe packetEncoder) error {
 	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
 
-	pe.putInt16(int16(r.ErrorCode))
-	if err := pe.putNullableCompactString(r.ErrorMessage); err != nil {
+	pe.putKError(r.ErrorCode)
+	if err := pe.putNullableString(r.ErrorMessage); err != nil {
 		return err
 	}
 
-	pe.putCompactArrayLength(len(r.Results))
+	if err := pe.putArrayLength(len(r.Results)); err != nil {
+		return err
+	}
 	for _, u := range r.Results {
-		if err := pe.putCompactString(u.User); err != nil {
+		if err := pe.putString(u.User); err != nil {
 			return err
 		}
 		pe.putInt16(int16(u.ErrorCode))
-		if err := pe.putNullableCompactString(u.ErrorMessage); err != nil {
+		if err := pe.putNullableString(u.ErrorMessage); err != nil {
 			return err
 		}
 
-		pe.putCompactArrayLength(len(u.CredentialInfos))
+		if err := pe.putArrayLength(len(u.CredentialInfos)); err != nil {
+			return err
+		}
 		for _, c := range u.CredentialInfos {
 			pe.putInt8(int8(c.Mechanism))
 			pe.putInt32(c.Iterations)
@@ -90,17 +94,16 @@ func (r *DescribeUserScramCredentialsResponse) decode(pd packetDecoder, version 
 	}
 	r.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
-	kerr, err := pd.getInt16()
+	r.ErrorCode, err = pd.getKError()
 	if err != nil {
 		return err
 	}
 
-	r.ErrorCode = KError(kerr)
-	if r.ErrorMessage, err = pd.getCompactNullableString(); err != nil {
+	if r.ErrorMessage, err = pd.getNullableString(); err != nil {
 		return err
 	}
 
-	numUsers, err := pd.getCompactArrayLength()
+	numUsers, err := pd.getArrayLength()
 	if err != nil {
 		return err
 	}
@@ -109,20 +112,19 @@ func (r *DescribeUserScramCredentialsResponse) decode(pd packetDecoder, version 
 		r.Results = make([]*DescribeUserScramCredentialsResult, numUsers)
 		for i := 0; i < numUsers; i++ {
 			r.Results[i] = &DescribeUserScramCredentialsResult{}
-			if r.Results[i].User, err = pd.getCompactString(); err != nil {
+			if r.Results[i].User, err = pd.getString(); err != nil {
 				return err
 			}
 
-			errorCode, err := pd.getInt16()
+			r.Results[i].ErrorCode, err = pd.getKError()
 			if err != nil {
 				return err
 			}
-			r.Results[i].ErrorCode = KError(errorCode)
-			if r.Results[i].ErrorMessage, err = pd.getCompactNullableString(); err != nil {
+			if r.Results[i].ErrorMessage, err = pd.getNullableString(); err != nil {
 				return err
 			}
 
-			numCredentialInfos, err := pd.getCompactArrayLength()
+			numCredentialInfos, err := pd.getArrayLength()
 			if err != nil {
 				return err
 			}
@@ -149,10 +151,8 @@ func (r *DescribeUserScramCredentialsResponse) decode(pd packetDecoder, version 
 		}
 	}
 
-	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
-		return err
-	}
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *DescribeUserScramCredentialsResponse) key() int16 {
@@ -169,6 +169,14 @@ func (r *DescribeUserScramCredentialsResponse) headerVersion() int16 {
 
 func (r *DescribeUserScramCredentialsResponse) isValidVersion() bool {
 	return r.Version == 0
+}
+
+func (r *DescribeUserScramCredentialsResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DescribeUserScramCredentialsResponse) isFlexibleVersion(version int16) bool {
+	return version >= 0
 }
 
 func (r *DescribeUserScramCredentialsResponse) requiredVersion() KafkaVersion {
