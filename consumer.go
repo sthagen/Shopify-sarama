@@ -455,6 +455,9 @@ type partitionConsumer struct {
 
 var errTimedOut = errors.New("timed out feeding messages to the user") // not user-facing
 
+// log every Nth consecutive failure (~20s apart at the default backoff)
+const stuckRetryThreshold = 10
+
 func (child *partitionConsumer) sendError(err error) {
 	cErr := &ConsumerError{
 		Topic:     child.topic,
@@ -518,8 +521,12 @@ func (child *partitionConsumer) stopDispatcher() {
 }
 
 func (child *partitionConsumer) computeBackoff() time.Duration {
+	retries := child.retries.Add(1)
+	if retries >= stuckRetryThreshold && retries%stuckRetryThreshold == 0 {
+		Logger.Printf("consumer/%s/%d still retrying after %d consecutive failures\n",
+			child.topic, child.partition, retries)
+	}
 	if child.conf.Consumer.Retry.BackoffFunc != nil {
-		retries := child.retries.Add(1)
 		return child.conf.Consumer.Retry.BackoffFunc(int(retries))
 	}
 	return child.conf.Consumer.Retry.Backoff
@@ -1262,7 +1269,7 @@ func (bc *brokerConsumer) fetchNewMessages() (*FetchResponse, error) {
 	// they appear in the request.
 	if bc.consumer.conf.Version.IsAtLeast(V0_10_1_0) {
 		request.Version = 3
-		request.MaxBytes = MaxResponseSize
+		request.MaxBytes = bc.consumer.conf.Consumer.Fetch.MaxBytes
 	}
 	// Version 4 adds IsolationLevel.  Starting in version 4, the reqestor must be
 	// able to handle Kafka log message format version 2.
