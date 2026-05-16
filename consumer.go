@@ -550,6 +550,14 @@ func (child *partitionConsumer) dispatcher() {
 			child.waitForBrokerHandover()
 			return
 		case <-child.trigger:
+			if max := child.conf.Consumer.Retry.Max; max > 0 && int(child.retries.Load()) >= max {
+				Logger.Printf("consumer/%s/%d giving up after %d consecutive failures\n",
+					child.topic, child.partition, child.retries.Load())
+				child.sendError(ErrConsumerRetriesExhausted)
+				child.AsyncClose()
+				child.waitForBrokerHandover()
+				return
+			}
 			// only set the timer when none is pending, so retries increments
 			// once per dispatch attempt rather than once per trigger
 			if backoff == nil {
@@ -866,7 +874,13 @@ func (child *partitionConsumer) parseResponse(response *FetchResponse) ([]*Consu
 				child.sendError(ErrMessageTooLarge)
 				child.offset++ // skip this one so we can keep processing future messages
 			} else {
-				child.fetchSize *= 2
+				// if the broker told us the exact size of the partial batch, request that
+				// directly; otherwise fall back to doubling the fetch size
+				if block.partialBatchSize > child.fetchSize {
+					child.fetchSize = block.partialBatchSize
+				} else {
+					child.fetchSize *= 2
+				}
 				// check int32 overflow
 				if child.fetchSize < 0 {
 					child.fetchSize = math.MaxInt32
