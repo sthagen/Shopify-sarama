@@ -1,11 +1,8 @@
-module github.com/IBM/sarama/examples/sasl_scram_client
+module github.com/IBM/sarama/examples/alter_partition_reassignments
 
 go 1.25.0
 
-require (
-	github.com/IBM/sarama v1.48.2
-	github.com/xdg-go/scram v1.2.0
-)
+require github.com/IBM/sarama v1.48.2
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -20,12 +17,9 @@ require (
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
-	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
-	github.com/xdg-go/stringprep v1.0.4 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
 )
 
 replace github.com/IBM/sarama => ../../
