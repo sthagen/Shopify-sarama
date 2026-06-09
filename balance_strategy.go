@@ -1099,7 +1099,7 @@ func indexOfSubList(source []string, target []string) int {
 nextCand:
 	for candidate := 0; candidate <= maxCandidate; candidate++ {
 		j := candidate
-		for i := 0; i < targetSize; i++ {
+		for i := range targetSize {
 			if target[i] != source[j] {
 				// Element mismatch, try next cand
 				continue nextCand
@@ -1135,12 +1135,12 @@ func (pq assignmentPriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 }
 
-func (pq *assignmentPriorityQueue) Push(x interface{}) {
+func (pq *assignmentPriorityQueue) Push(x any) {
 	member := x.(*consumerGroupMember)
 	*pq = append(*pq, member)
 }
 
-func (pq *assignmentPriorityQueue) Pop() interface{} {
+func (pq *assignmentPriorityQueue) Pop() any {
 	old := *pq
 	n := len(old)
 	member := old[n-1]

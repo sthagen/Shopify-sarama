@@ -69,6 +69,9 @@ func (b *ProduceResponseBlock) decode(pd packetDecoder, version int16) (err erro
 		if err != nil {
 			return err
 		}
+		if numRecordErrors < 0 {
+			return errInvalidArrayLength
+		}
 		if numRecordErrors > 0 {
 			b.RecordErrors = make([]ProduceResponseRecordError, numRecordErrors)
 			for i := range b.RecordErrors {
@@ -141,9 +144,12 @@ func (r *ProduceResponse) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
+	if numTopics < 0 {
+		return errInvalidArrayLength
+	}
 
 	r.Blocks = make(map[string]map[int32]*ProduceResponseBlock, numTopics)
-	for i := 0; i < numTopics; i++ {
+	for range numTopics {
 		name, err := pd.getString()
 		if err != nil {
 			return err
@@ -153,10 +159,13 @@ func (r *ProduceResponse) decode(pd packetDecoder, version int16) (err error) {
 		if err != nil {
 			return err
 		}
+		if numBlocks < 0 {
+			return errInvalidArrayLength
+		}
 
 		r.Blocks[name] = make(map[int32]*ProduceResponseBlock, numBlocks)
 
-		for j := 0; j < numBlocks; j++ {
+		for range numBlocks {
 			id, err := pd.getInt32()
 			if err != nil {
 				return err

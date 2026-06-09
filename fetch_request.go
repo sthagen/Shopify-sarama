@@ -1,7 +1,5 @@
 package sarama
 
-import "fmt"
-
 type fetchRequestBlock struct {
 	Version int16
 	// currentLeaderEpoch contains the current leader epoch of the partition.
@@ -161,12 +159,9 @@ func (r *FetchRequest) encode(pe packetEncoder) (err error) {
 			if err != nil {
 				return err
 			}
-			err = pe.putArrayLength(len(partitions))
+			err = pe.putInt32Array(partitions)
 			if err != nil {
 				return err
-			}
-			for _, partition := range partitions {
-				pe.putInt32(partition)
 			}
 			pe.putEmptyTaggedFieldArray()
 		}
@@ -220,11 +215,14 @@ func (r *FetchRequest) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
+	if topicCount < 0 {
+		return errInvalidArrayLength
+	}
 	if topicCount == 0 && r.Version < 7 {
 		return nil
 	}
 	r.blocks = make(map[string]map[int32]*fetchRequestBlock)
-	for i := 0; i < topicCount; i++ {
+	for range topicCount {
 		topic, err := pd.getString()
 		if err != nil {
 			return err
@@ -233,8 +231,11 @@ func (r *FetchRequest) decode(pd packetDecoder, version int16) (err error) {
 		if err != nil {
 			return err
 		}
+		if partitionCount < 0 {
+			return errInvalidArrayLength
+		}
 		r.blocks[topic] = make(map[int32]*fetchRequestBlock)
-		for j := 0; j < partitionCount; j++ {
+		for range partitionCount {
 			partition, err := pd.getInt32()
 			if err != nil {
 				return err
@@ -255,27 +256,17 @@ func (r *FetchRequest) decode(pd packetDecoder, version int16) (err error) {
 		if err != nil {
 			return err
 		}
+		if forgottenCount < 0 {
+			return errInvalidArrayLength
+		}
 		r.forgotten = make(map[string][]int32)
-		for i := 0; i < forgottenCount; i++ {
+		for range forgottenCount {
 			topic, err := pd.getString()
 			if err != nil {
 				return err
 			}
-			partitionCount, err := pd.getArrayLength()
-			if err != nil {
+			if r.forgotten[topic], err = pd.getInt32Array(); err != nil {
 				return err
-			}
-			if partitionCount < 0 {
-				return fmt.Errorf("partitionCount %d is invalid", partitionCount)
-			}
-			r.forgotten[topic] = make([]int32, partitionCount)
-
-			for j := 0; j < partitionCount; j++ {
-				partition, err := pd.getInt32()
-				if err != nil {
-					return err
-				}
-				r.forgotten[topic][j] = partition
 			}
 			if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
 				return err

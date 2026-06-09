@@ -139,7 +139,7 @@ func (b *FetchResponseBlock) decode(pd packetDecoder, version int16) (err error)
 			b.AbortedTransactions = make([]*AbortedTransaction, numTransact)
 		}
 
-		for i := 0; i < numTransact; i++ {
+		for i := range numTransact {
 			transact := new(AbortedTransaction)
 			if err = transact.decode(pd); err != nil {
 				return err
@@ -426,9 +426,12 @@ func (r *FetchResponse) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
+	if numTopics < 0 {
+		return errInvalidArrayLength
+	}
 
 	r.Blocks = make(map[string]map[int32]*FetchResponseBlock, numTopics)
-	for i := 0; i < numTopics; i++ {
+	for range numTopics {
 		name, err := pd.getString()
 		if err != nil {
 			return err
@@ -438,10 +441,13 @@ func (r *FetchResponse) decode(pd packetDecoder, version int16) (err error) {
 		if err != nil {
 			return err
 		}
+		if numBlocks < 0 {
+			return errInvalidArrayLength
+		}
 
 		r.Blocks[name] = make(map[int32]*FetchResponseBlock, numBlocks)
 
-		for j := 0; j < numBlocks; j++ {
+		for range numBlocks {
 			id, err := pd.getInt32()
 			if err != nil {
 				return err

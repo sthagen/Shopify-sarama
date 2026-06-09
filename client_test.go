@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -729,13 +728,11 @@ func TestClientResurrectDeadSeeds(t *testing.T) {
 	client.brokers = map[int32]*Broker{}
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		if err := client.RefreshMetadata(); err != nil {
 			t.Error(err)
 		}
-		wg.Done()
-	}()
+	})
 	seed1.Close()
 	seed2.Close()
 
@@ -1097,7 +1094,7 @@ func TestClientUpdateMetadataErrorAndRetry(t *testing.T) {
 	}
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(10)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			defer waitGroup.Done()
 			err := client.RefreshMetadata("new_topic")
@@ -1161,7 +1158,7 @@ func TestClientRefreshesMetadataConcurrently(t *testing.T) {
 
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(100)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			defer waitGroup.Done()
 			assert.NoError(t, client.RefreshMetadata("topic1"))
@@ -1363,26 +1360,42 @@ func TestClientCoordinatorWithoutConsumerOffsetsTopic(t *testing.T) {
 	safeClose(t, client)
 }
 
-func TestClientBackgroundMetadataUpdaterIgnoresNoTopics(t *testing.T) {
-	seedBroker := NewMockBroker(t, 1)
-	defer seedBroker.Close()
+func TestClientBackgroundMetadataUpdater(t *testing.T) {
+	t.Run("does not log ErrNoTopicsToUpdateMetadata when no topics registered", func(t *testing.T) {
+		seedBroker := NewMockBroker(t, 1)
+		defer seedBroker.Close()
 
-	var buf bytes.Buffer
-	orig := Logger
-	Logger = log.New(&buf, "", 0)
-	t.Cleanup(func() { Logger = orig })
+		w := &matchWriter{substr: []byte("no specific topics to update metadata")}
+		orig := Logger
+		Logger = log.New(w, "", 0)
+		t.Cleanup(func() { Logger = orig })
 
-	conf := NewTestConfig()
-	conf.Metadata.Full = false
-	conf.Metadata.RefreshFrequency = 10 * time.Millisecond
-	client, err := NewClient([]string{seedBroker.Addr()}, conf)
-	require.NoError(t, err)
-	t.Cleanup(func() { safeClose(t, client) })
+		conf := NewTestConfig()
+		conf.Metadata.Full = false
+		conf.Metadata.RefreshFrequency = 10 * time.Millisecond
+		client, err := NewClient([]string{seedBroker.Addr()}, conf)
+		require.NoError(t, err)
+		t.Cleanup(func() { safeClose(t, client) })
 
-	require.Never(t, func() bool {
-		return strings.Contains(buf.String(), "no specific topics to update metadata")
-	}, 200*time.Millisecond, 10*time.Millisecond,
-		"background updater should not log when no topics are registered")
+		require.Never(t, w.matched, 200*time.Millisecond, 10*time.Millisecond,
+			"background updater should not log when no topics are registered")
+	})
+}
+
+type matchWriter struct {
+	substr []byte
+	seen   atomic.Bool
+}
+
+func (w *matchWriter) Write(p []byte) (int, error) {
+	if bytes.Contains(p, w.substr) {
+		w.seen.Store(true)
+	}
+	return len(p), nil
+}
+
+func (w *matchWriter) matched() bool {
+	return w.seen.Load()
 }
 
 func TestClientAutorefreshShutdownRace(t *testing.T) {

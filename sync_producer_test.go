@@ -20,7 +20,7 @@ func TestSyncProducer(t *testing.T) {
 
 	prodSuccess := new(ProduceResponse)
 	prodSuccess.AddTopicPartition("my_topic", 0, ErrNoError)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		leader.Returns(prodSuccess)
 	}
 
@@ -31,7 +31,7 @@ func TestSyncProducer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		msg := &ProducerMessage{
 			Topic:    "my_topic",
 			Value:    StringEncoder(TestMessage),
@@ -109,7 +109,7 @@ func TestSyncProducerTransactional(t *testing.T) {
 	prodSuccess := new(ProduceResponse)
 	prodSuccess.Version = 3
 	prodSuccess.AddTopicPartition("my_topic", 0, ErrNoError)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		leader.Returns(prodSuccess)
 	}
 
@@ -132,7 +132,7 @@ func TestSyncProducerTransactional(t *testing.T) {
 		t.Error("transaction must started")
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		msg := &ProducerMessage{
 			Topic:    "my_topic",
 			Value:    StringEncoder(TestMessage),
@@ -233,9 +233,8 @@ func TestConcurrentSyncProducer(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
+	for range 100 {
+		wg.Go(func() {
 			msg := &ProducerMessage{Topic: "my_topic", Value: StringEncoder(TestMessage)}
 			partition, _, err := producer.SendMessage(msg)
 			if partition != 0 {
@@ -244,8 +243,7 @@ func TestConcurrentSyncProducer(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			wg.Done()
-		}()
+		})
 	}
 	wg.Wait()
 

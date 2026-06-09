@@ -202,7 +202,7 @@ func parseVersion(version string) sarama.KafkaVersion {
 
 func generateMessages(topic string, partition, messageLoad, messageSize int) []*sarama.ProducerMessage {
 	messages := make([]*sarama.ProducerMessage, messageLoad)
-	for i := 0; i < messageLoad; i++ {
+	for i := range messageLoad {
 		payload := make([]byte, messageSize)
 		if _, err := rand.Read(payload); err != nil {
 			printErrorAndExit(69, "Failed to generate message payload: %s", err)
@@ -333,7 +333,7 @@ func runAsyncProducer(topic string, partition, messageLoad, messageSize int,
 
 	messagesDone := make(chan struct{})
 	go func() {
-		for i := 0; i < messageLoad; i++ {
+		for range messageLoad {
 			select {
 			case <-producer.Successes():
 			case err = <-producer.Errors():
@@ -377,7 +377,7 @@ func runSyncProducer(topic string, partition, messageLoad, messageSize, routines
 	}()
 
 	messages := make([][]*sarama.ProducerMessage, routines)
-	for i := 0; i < routines; i++ {
+	for i := range routines {
 		if i == routines-1 {
 			messages[i] = generateMessages(topic, partition, messageLoad/routines+messageLoad%routines, messageSize)
 		} else {
@@ -388,11 +388,10 @@ func runSyncProducer(topic string, partition, messageLoad, messageSize, routines
 	var wg gosync.WaitGroup
 	if throughput > 0 {
 		for _, messages := range messages {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				ticker := time.NewTicker(time.Second)
 				for _, message := range messages {
-					for i := 0; i < throughput; i++ {
+					for range throughput {
 						_, _, err = producer.SendMessage(message)
 						if err != nil {
 							printErrorAndExit(69, "Failed to send message: %s", err)
@@ -401,21 +400,18 @@ func runSyncProducer(topic string, partition, messageLoad, messageSize, routines
 					<-ticker.C
 				}
 				ticker.Stop()
-				wg.Done()
-			}()
+			})
 		}
 	} else {
 		for _, messages := range messages {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				for _, message := range messages {
 					_, _, err = producer.SendMessage(message)
 					if err != nil {
 						printErrorAndExit(69, "Failed to send message: %s", err)
 					}
 				}
-				wg.Done()
-			}()
+			})
 		}
 	}
 	wg.Wait()
@@ -462,7 +458,7 @@ func printUsageErrorAndExit(message string) {
 	os.Exit(64)
 }
 
-func printErrorAndExit(code int, format string, values ...interface{}) {
+func printErrorAndExit(code int, format string, values ...any) {
 	fmt.Fprintf(os.Stderr, "ERROR: %s\n", fmt.Sprintf(format, values...))
 	fmt.Fprintln(os.Stderr)
 	os.Exit(code)
