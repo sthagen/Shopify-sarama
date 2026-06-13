@@ -71,7 +71,7 @@ var names = map[int16]string{
 	54:                                 "EndQuorumEpochRequest",
 	55:                                 "DescribeQuorumRequest",
 	56:                                 "AlterPartitionRequest",
-	57:                                 "UpdateFeaturesRequest",
+	apiKeyUpdateFeatures:               "UpdateFeaturesRequest",
 	58:                                 "EnvelopeRequest",
 	59:                                 "FetchSnapshotRequest",
 	apiKeyDescribeCluster:              "DescribeClusterRequest",
@@ -308,14 +308,10 @@ func TestAllocateBodyProtocolVersions(t *testing.T) {
 				apiKeyDescribeUserScramCredentials: 0,  // new in 2.7
 				apiKeyAlterUserScramCredentials:    0,  // new in 2.7
 				apiKeyFetch:                        12, // up from 11
-				// TODO: CreateTopicsRequest v6 is not supported, but expected for KafkaVersion 2.7.0
-				// apiKeyCreateTopics:     6, // up from 5
-				// TODO: DeleteTopicsRequest v5 is not supported, but expected for KafkaVersion 2.7.0
-				// apiKeyDeleteTopics:     5, // up from 4
-				// TODO: CreatePartitionsRequest v3 is not supported, but expected for KafkaVersion 2.7.0
-				// apiKeyCreatePartitions: 3, // up from 2
-				// TODO: UpdateFeaturesRequest v0 is not supported, but expected for KafkaVersion 2.7.0
-				// apiKeyUpdateFeatures /* (57) */: 0, // new in 2.7
+				apiKeyCreateTopics:                 6,  // up from 5
+				apiKeyDeleteTopics:                 5,  // up from 4
+				apiKeyCreatePartitions:             3,  // up from 2
+				apiKeyUpdateFeatures:               0,  // new in 2.7
 			},
 		},
 		{
@@ -325,14 +321,12 @@ func TestAllocateBodyProtocolVersions(t *testing.T) {
 				apiKeyDescribeClientQuotas: 1,  // up from 0
 				apiKeyDescribeCluster:      0,  // new in 2.8
 				apiKeyDescribeConfigs:      4,  // up from 3
-				// TODO: ProduceRequest v9 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyProduce:              9, // up from 8
+				apiKeyAddPartitionsToTxn:   3,  // up from 2
+				apiKeyProduce:              9,  // up from 8
 				// TODO: ListOffsetsRequest v6 is not supported, but expected for KafkaVersion 2.8.0
 				// apiKeyListOffsets:          6, // up from 5
 				// TODO: MetadataRequest v11 is not supported, but expected for KafkaVersion 2.8.0
 				// apiKeyMetadata:             11, // up from 9
-				// TODO: AddPartitionsToTxnRequest v3 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyAddPartitionsToTxn:   3, // up from 2
 				// TODO: AddOffsetsToTxnRequest v3 is not supported, but expected for KafkaVersion 2.8.0
 				// apiKeyAddOffsetsToTxn:      3, // up from 2
 				// TODO: EndTxnRequest v3 is not supported, but expected for KafkaVersion 2.8.0
@@ -547,6 +541,7 @@ func TestAllocateBodyProtocolVersions(t *testing.T) {
 				apiKeyAlterClientQuotas:            maxVersion(&AlterClientQuotasRequest{}),
 				apiKeyDescribeUserScramCredentials: maxVersion(&DescribeUserScramCredentialsRequest{}),
 				apiKeyAlterUserScramCredentials:    maxVersion(&AlterUserScramCredentialsRequest{}),
+				apiKeyUpdateFeatures:               maxVersion(&UpdateFeaturesRequest{}),
 				apiKeyDescribeCluster:              maxVersion(&DescribeClusterRequest{}),
 			},
 		},

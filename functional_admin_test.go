@@ -49,6 +49,19 @@ func topicWithEvenLeaders(t *testing.T, adminClient ClusterAdmin, client Client,
 	if err != nil {
 		return "", err
 	}
+
+	// topic creation is asynchronous; wait for every partition to have an
+	// elected leader before returning (producing too early fails with
+	// ErrNotLeaderForPartition or ErrUnknownTopicOrPartition)
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
+		require.NoError(t, client.RefreshMetadata(topic))
+		for partition := int32(0); partition < numPartitions; partition++ {
+			leader, err := client.Leader(topic, partition)
+			require.NoError(t, err, "no leader for %s/%d", topic, partition)
+			require.NotNil(t, leader)
+		}
+	}, 30*time.Second, 250*time.Millisecond, "leaders were not elected for all partitions of %s", topic)
+
 	return topic, nil
 }
 
@@ -999,5 +1012,45 @@ func TestFuncAdminIncrementalAlterConfigs(t *testing.T) {
 		}, false)
 	if err != nil {
 		t.Fatalf("failed to alter config: %v", err)
+	}
+}
+
+func TestFuncAdminUpdateFeatures(t *testing.T) {
+	t.Parallel()
+	// feature updates need a KRaft cluster; ZooKeeper-mode brokers don't
+	// advertise any features
+	checkKafkaVersion(t, "4.0.0.0")
+	setupFunctionalTest(t)
+	defer teardownFunctionalTest(t)
+
+	kafkaVersion, err := ParseKafkaVersion(FunctionalTestEnv.KafkaVersion)
+	require.NoError(t, err)
+
+	config := NewFunctionalTestConfig()
+	config.Version = kafkaVersion
+	adminClient, err := NewClusterAdmin(FunctionalTestEnv.KafkaBrokerAddrs, config)
+	require.NoError(t, err)
+	defer safeClose(t, adminClient)
+
+	// an update for a made-up feature name should be rejected without
+	// touching cluster state; the controller fails the whole batch with
+	// INVALID_UPDATE_VERSION when every update in it failed
+	_, err = adminClient.UpdateFeatures([]FeatureUpdate{{
+		Feature:         "sarama.unsupported.feature",
+		MaxVersionLevel: 1,
+	}})
+	require.ErrorIs(t, err, ErrInvalidUpdateVersion)
+
+	// share.version (KIP-932) ships disabled on 4.1 (finalized 0, max 1),
+	// so we can do a real upgrade here
+	if kafkaVersion.IsAtLeast(V4_1_0_0) && !kafkaVersion.IsAtLeast(V4_2_0_0) {
+		results, err := adminClient.UpdateFeatures([]FeatureUpdate{{
+			Feature:         "share.version",
+			MaxVersionLevel: 1,
+		}})
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.Equal(t, "share.version", results[0].Feature)
+		assert.Equal(t, ErrNoError, results[0].ErrorCode)
 	}
 }
