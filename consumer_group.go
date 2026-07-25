@@ -109,6 +109,9 @@ type consumerGroup struct {
 
 	userData []byte
 
+	// protocol is fixed at construction from the configured balance strategies
+	protocol RebalanceProtocol
+
 	metricRegistry metrics.Registry
 }
 
@@ -145,6 +148,11 @@ func newConsumerGroup(groupID string, client Client) (ConsumerGroup, error) {
 		return nil, ConfigurationError("consumer groups require Version to be >= V0_10_2_0")
 	}
 
+	protocol, err := selectRebalanceProtocol(config.groupStrategies())
+	if err != nil {
+		return nil, err
+	}
+
 	consumer, err := newConsumer(client)
 	if err != nil {
 		return nil, err
@@ -158,6 +166,7 @@ func newConsumerGroup(groupID string, client Client) (ConsumerGroup, error) {
 		errors:         make(chan error, config.ChannelBufferSize),
 		closed:         make(chan none),
 		userData:       config.Consumer.Group.Member.UserData,
+		protocol:       protocol,
 		metricRegistry: newCleanupRegistry(config.MetricRegistry),
 	}
 	if config.Consumer.Group.InstanceId != "" && config.Version.IsAtLeast(V2_3_0_0) {
@@ -269,7 +278,7 @@ func (c *consumerGroup) ResumeAll() {
 	c.consumer.ResumeAll()
 }
 
-func (c *consumerGroup) retryNewSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int, refreshCoordinator bool) (*consumerGroupSession, error) {
+func (c *consumerGroup) retryJoinSync(ctx context.Context, topics []string, held *heldAssignment, retries int, refreshCoordinator bool) (*rebalanceResult, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -284,14 +293,30 @@ func (c *consumerGroup) retryNewSession(ctx context.Context, topics []string, ha
 			if retries <= 0 {
 				return nil, err
 			}
-			return c.retryNewSession(ctx, topics, handler, retries-1, true)
+			return c.retryJoinSync(ctx, topics, held, retries-1, true)
 		}
 	}
 
-	return c.newSession(ctx, topics, handler, retries-1)
+	return c.joinSync(ctx, topics, held, retries-1)
 }
 
-func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int) (*consumerGroupSession, error) {
+type heldAssignment struct {
+	claims       map[string][]int32
+	generationID int32
+}
+
+type rebalanceResult struct {
+	memberID     string
+	generationID int32
+	claims       map[string][]int32
+
+	isLeader                     bool
+	allSubscribedTopicPartitions map[string][]int32
+	allSubscribedTopics          []string
+}
+
+// joinSync separates group negotiation from session lifetime so a session can survive a rejoin
+func (c *consumerGroup) joinSync(ctx context.Context, topics []string, held *heldAssignment, retries int) (*rebalanceResult, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -301,7 +326,7 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 			return nil, err
 		}
 
-		return c.retryNewSession(ctx, topics, handler, retries, true)
+		return c.retryJoinSync(ctx, topics, held, retries, true)
 	}
 
 	var (
@@ -320,7 +345,7 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 	}
 
 	// Join consumer group
-	join, err := c.joinGroupRequest(coordinator, topics)
+	join, err := c.joinGroupRequest(coordinator, topics, held)
 	if consumerGroupJoinTotal != nil {
 		consumerGroupJoinTotal.Inc(1)
 	}
@@ -342,20 +367,23 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 	case ErrUnknownMemberId, ErrIllegalGeneration:
 		// reset member ID and retry immediately
 		c.memberID = ""
-		return c.newSession(ctx, topics, handler, retries)
+		if c.lostHeldAssignment(held, join.Err) {
+			return nil, join.Err
+		}
+		return c.joinSync(ctx, topics, held, retries)
 	case ErrNotCoordinatorForConsumer, ErrRebalanceInProgress, ErrOffsetsLoadInProgress:
 		// retry after backoff
 		if retries <= 0 {
 			return nil, join.Err
 		}
-		return c.retryNewSession(ctx, topics, handler, retries, true)
+		return c.retryJoinSync(ctx, topics, held, retries, true)
 	case ErrMemberIdRequired:
 		// from JoinGroupRequest v4 onwards (due to KIP-394) if the client starts
 		// with an empty member id, it needs to get the assigned id from the
 		// response and send another join request with that id to actually join the
 		// group
 		c.memberID = join.MemberId
-		return c.newSession(ctx, topics, handler, retries)
+		return c.joinSync(ctx, topics, held, retries)
 	case ErrFencedInstancedId:
 		if c.groupInstanceId != nil {
 			Logger.Printf("JoinGroup failed: group instance id %s has been fenced\n", *c.groupInstanceId)
@@ -416,13 +444,16 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 	case ErrUnknownMemberId, ErrIllegalGeneration:
 		// reset member ID and retry immediately
 		c.memberID = ""
-		return c.newSession(ctx, topics, handler, retries)
+		if c.lostHeldAssignment(held, syncGroupResponse.Err) {
+			return nil, syncGroupResponse.Err
+		}
+		return c.joinSync(ctx, topics, held, retries)
 	case ErrNotCoordinatorForConsumer, ErrRebalanceInProgress, ErrOffsetsLoadInProgress:
 		// retry after backoff
 		if retries <= 0 {
 			return nil, syncGroupResponse.Err
 		}
-		return c.retryNewSession(ctx, topics, handler, retries, true)
+		return c.retryJoinSync(ctx, topics, held, retries, true)
 	case ErrFencedInstancedId:
 		if c.groupInstanceId != nil {
 			Logger.Printf("JoinGroup failed: group instance id %s has been fenced\n", *c.groupInstanceId)
@@ -461,20 +492,44 @@ func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler
 		}
 	}
 
-	session, err := newConsumerGroupSession(ctx, c, claims, join.MemberId, join.GenerationId, handler)
+	return &rebalanceResult{
+		memberID:                     join.MemberId,
+		generationID:                 join.GenerationId,
+		claims:                       claims,
+		isLeader:                     join.LeaderId == join.MemberId,
+		allSubscribedTopicPartitions: allSubscribedTopicPartitions,
+		allSubscribedTopics:          allSubscribedTopics,
+	}, nil
+}
+
+func (c *consumerGroup) lostHeldAssignment(held *heldAssignment, err error) bool {
+	if held == nil || len(held.claims) == 0 {
+		return false
+	}
+	Logger.Printf("consumergroup/%s: lost ownership of %v due to %v\n", c.groupID, held.claims, err)
+	return true
+}
+
+func (c *consumerGroup) newSession(ctx context.Context, topics []string, handler ConsumerGroupHandler, retries int) (*consumerGroupSession, error) {
+	res, err := c.joinSync(ctx, topics, nil, retries)
+	if err != nil {
+		return nil, err
+	}
+
+	session, err := newConsumerGroupSession(ctx, c, res.claims, res.memberID, res.generationID, handler)
 	if err != nil {
 		return nil, err
 	}
 
 	// only the leader needs to check whether there are newly-added partitions in order to trigger a rebalance
-	if join.LeaderId == join.MemberId {
-		go c.loopCheckPartitionNumbers(allSubscribedTopicPartitions, allSubscribedTopics, session)
+	if res.isLeader {
+		go c.loopCheckPartitionNumbers(res.allSubscribedTopicPartitions, res.allSubscribedTopics, session)
 	}
 
-	return session, err
+	return session, nil
 }
 
-func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string) (*JoinGroupResponse, error) {
+func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string, held *heldAssignment) (*JoinGroupResponse, error) {
 	req := &JoinGroupRequest{
 		GroupId:        c.groupID,
 		MemberId:       c.memberID,
@@ -514,19 +569,34 @@ func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string) (
 		c.lastSessionCause = nil
 	}
 
-	if strategy := c.config.Consumer.Group.Rebalance.Strategy; strategy != nil {
-		if err := req.AddGroupProtocolMetadata(strategy.Name(), c.subscriptionMetadata(strategy, topics)); err != nil {
+	var owned map[string][]int32
+	generationID := int32(defaultGeneration)
+	if held != nil {
+		owned = held.claims
+		generationID = held.generationID
+	}
+
+	for _, strategy := range c.config.groupStrategies() {
+		meta := c.subscriptionMetadata(strategy, topics, owned, generationID)
+		if err := req.AddGroupProtocolMetadata(strategy.Name(), meta); err != nil {
 			return nil, err
-		}
-	} else {
-		for _, strategy := range c.config.Consumer.Group.Rebalance.GroupStrategies {
-			if err := req.AddGroupProtocolMetadata(strategy.Name(), c.subscriptionMetadata(strategy, topics)); err != nil {
-				return nil, err
-			}
 		}
 	}
 
 	return coordinator.JoinGroup(req)
+}
+
+// subscriptionVersion is based on the broker version rather than the rebalance
+// protocol so owned partitions are available during a rolling upgrade
+func (c *consumerGroup) subscriptionVersion() int16 {
+	switch {
+	case c.config.Version.IsAtLeast(V3_2_0_0):
+		return 2 // KIP-792: GenerationID
+	case c.config.Version.IsAtLeast(V2_4_0_0):
+		return 1 // KIP-429: OwnedPartitions
+	default:
+		return 0
+	}
 }
 
 // subscriptionMetadata builds the ConsumerGroupMemberMetadata for a single
@@ -534,26 +604,32 @@ func (c *consumerGroup) joinGroupRequest(coordinator *Broker, topics []string) (
 // SubscriptionUserDataBalanceStrategy, its SubscriptionUserData hook is invoked
 // to obtain per-cycle UserData; on error the statically configured
 // Consumer.Group.Member.UserData is used and the error is logged.
-func (c *consumerGroup) subscriptionMetadata(strategy BalanceStrategy, topics []string) *ConsumerGroupMemberMetadata {
-	if p, ok := strategy.(SubscriptionUserDataBalanceStrategy); ok {
-		// Hand the provider a throwaway copy so it cannot mutate the slice
-		// we later attach to the JoinGroup request.
-		userData, err := p.SubscriptionUserData(slices.Clone(topics))
-		if err == nil {
-			return &ConsumerGroupMemberMetadata{
-				Topics:   topics,
-				UserData: userData,
-			}
-		}
+func (c *consumerGroup) subscriptionMetadata(strategy BalanceStrategy, topics []string, owned map[string][]int32, generationID int32) *ConsumerGroupMemberMetadata {
+	meta := &ConsumerGroupMemberMetadata{
+		Version:         c.subscriptionVersion(),
+		Topics:          topics,
+		UserData:        c.userData,
+		OwnedPartitions: ownedPartitions(owned),
+		GenerationID:    generationID,
+	}
+
+	p, ok := strategy.(SubscriptionUserDataBalanceStrategy)
+	if !ok {
+		return meta
+	}
+
+	// Hand the provider a throwaway copy so it cannot mutate the slice
+	// we later attach to the JoinGroup request.
+	userData, err := p.SubscriptionUserData(slices.Clone(topics))
+	if err != nil {
 		Logger.Printf(
 			"consumergroup/%s: falling back to static user data for strategy %q due to %v\n",
 			c.groupID, strategy.Name(), err,
 		)
+		return meta
 	}
-	return &ConsumerGroupMemberMetadata{
-		Topics:   topics,
-		UserData: c.userData,
-	}
+	meta.UserData = userData
+	return meta
 }
 
 // findStrategy returns the BalanceStrategy with the specified protocolName

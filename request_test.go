@@ -75,12 +75,12 @@ var names = map[int16]string{
 	58:                                 "EnvelopeRequest",
 	59:                                 "FetchSnapshotRequest",
 	apiKeyDescribeCluster:              "DescribeClusterRequest",
-	61:                                 "DescribeProducersRequest",
+	apiKeyDescribeProducers:            "DescribeProducersRequest",
 	62:                                 "BrokerRegistrationRequest",
 	63:                                 "BrokerHeartbeatRequest",
 	64:                                 "UnregisterBrokerRequest",
-	65:                                 "DescribeTransactionsRequest",
-	66:                                 "ListTransactionsRequest",
+	apiKeyDescribeTransactions:         "DescribeTransactionsRequest",
+	apiKeyListTransactions:             "ListTransactionsRequest",
 	67:                                 "AllocateProducerIdsRequest",
 	68:                                 "ConsumerGroupHeartbeatRequest",
 }
@@ -323,28 +323,22 @@ func TestAllocateBodyProtocolVersions(t *testing.T) {
 				apiKeyDescribeConfigs:      4,  // up from 3
 				apiKeyAddPartitionsToTxn:   3,  // up from 2
 				apiKeyProduce:              9,  // up from 8
-				// TODO: ListOffsetsRequest v6 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyListOffsets:          6, // up from 5
-				// TODO: AddOffsetsToTxnRequest v3 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyAddOffsetsToTxn:      3, // up from 2
-				// TODO: EndTxnRequest v3 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyEndTxn:               3, // up from 2
-				// TODO: AlterConfigsRequest v2 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyAlterConfigs:         2, // up from 1
-				// TODO: AlterClientQuotasRequest v1 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyAlterClientQuotas:    1, // up from 0
-				// TODO: CreateTopicsRequest v7 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyCreateTopics:         7, // up from 6
-				// TODO: DeleteTopicsRequest v6 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyDeleteTopics:         6, // up from 5
-				// TODO: DescribeProducersRequest v0 is not supported, but expected for KafkaVersion 2.8.0
-				// apiKeyDescribeProducers /* (61) */: 0, // new in 2.8
+				apiKeyDescribeProducers:    0,  // new in 2.8
+				apiKeyListOffsets:          6,  // up from 5
+				apiKeyAddOffsetsToTxn:      3,  // up from 2
+				apiKeyEndTxn:               3,  // up from 2
+				apiKeyAlterConfigs:         2,  // up from 1
+				apiKeyAlterClientQuotas:    1,  // up from 0
+				apiKeyCreateTopics:         7,  // up from 6
+				apiKeyDeleteTopics:         6,  // up from 5
 			},
 		},
 		{
 			V3_0_0_0,
 			map[int16]int16{
-				apiKeyOffsetFetch: 8, // up from 7
+				apiKeyOffsetFetch:          8, // up from 7
+				apiKeyDescribeTransactions: 0, // new in 3.0
+				apiKeyListTransactions:     0, // new in 3.0
 				// TODO: ListOffsetsRequest v7 is not supported, but expected for KafkaVersion 3.0.0
 				// apiKeyListOffsets:     7, // up from 6
 				// TODO: FindCoordinatorRequest v4 is not supported, but expected for KafkaVersion 3.0.0
@@ -418,7 +412,8 @@ func TestAllocateBodyProtocolVersions(t *testing.T) {
 		{
 			V3_8_0_0,
 			map[int16]int16{
-				apiKeyListGroups: 5, // up from 4
+				apiKeyListGroups:       5, // up from 4
+				apiKeyListTransactions: 1, // up from 0
 				// TODO: ProduceRequest v11 is not supported, but expected for KafkaVersion 3.8.0
 				// apiKeyProduce:            11, // up from 10
 				// TODO: FindCoordinatorRequest v5 is not supported, but expected for KafkaVersion 3.8.0
@@ -539,6 +534,9 @@ func TestAllocateBodyProtocolVersions(t *testing.T) {
 				apiKeyAlterUserScramCredentials:    maxVersion(&AlterUserScramCredentialsRequest{}),
 				apiKeyUpdateFeatures:               maxVersion(&UpdateFeaturesRequest{}),
 				apiKeyDescribeCluster:              maxVersion(&DescribeClusterRequest{}),
+				apiKeyDescribeProducers:            maxVersion(&DescribeProducersRequest{}),
+				apiKeyDescribeTransactions:         maxVersion(&DescribeTransactionsRequest{}),
+				apiKeyListTransactions:             maxVersion(&ListTransactionsRequest{}),
 			},
 		},
 	}
